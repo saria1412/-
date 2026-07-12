@@ -29,6 +29,10 @@ jobs:
 
       - name: Reconstruct and extract project
         run: |
+          cat build-input/part03-gz.* | base64 -d > build-input/baynana-v2.part.03.gz
+          echo 'e9b07f6d1aca39a22810d27da0a2c9f362d4d0cc8f3c472f66ed413bc5607ba8  build-input/baynana-v2.part.03.gz' | sha256sum -c -
+          gunzip -c build-input/baynana-v2.part.03.gz > build-input/baynana-v2.part.03
+          echo 'a75c13d2b600fad085d9844443e9ad8b6d98bc441dc2338a97e18d1dd36be6d9  build-input/baynana-v2.part.03' | sha256sum -c -
           cat \
             build-input/baynana-v2.part.00 \
             build-input/baynana-v2.part.01 \
@@ -91,6 +95,7 @@ jobs:
               raise RuntimeError('Project extraction incomplete')
           PY
           test -f BaynanaAndroid/app/build.gradle.kts
+          test -f BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/ui/BaynanaApp.kt
 
       - name: Build debug APK
         working-directory: BaynanaAndroid
