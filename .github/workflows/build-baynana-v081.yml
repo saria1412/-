@@ -56,7 +56,10 @@ jobs:
         run: |
           cp BaynanaAndroid/app/build/outputs/apk/debug/app-debug.apk Baynana-v0.8.1-debug.apk
           unzip -t Baynana-v0.8.1-debug.apk
-          unzip -p Baynana-v0.8.1-debug.apk classes.dex | strings | grep -F 'MainActivity'
+          rm -rf /tmp/baynana-dex && mkdir -p /tmp/baynana-dex
+          unzip -q Baynana-v0.8.1-debug.apk 'classes*.dex' -d /tmp/baynana-dex
+          strings /tmp/baynana-dex/classes*.dex > /tmp/baynana-dex-strings.txt
+          grep -F 'MainActivity' /tmp/baynana-dex-strings.txt
           sha256sum Baynana-v0.8.1-debug.apk > Baynana-v0.8.1-debug.apk.sha256
           (cd BaynanaAndroid && zip -qr ../Baynana-v0.8.1-source.zip . -x 'app/build/*' '.gradle/*' 'build/*')
 
