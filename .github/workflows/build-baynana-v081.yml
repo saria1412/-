@@ -1,0 +1,229 @@
+name: Build Baynana v0.8.1 APK
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Restore verified v0.8.0 source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H 'Accept: application/vnd.github+json' /repos/${{ github.repository }}/actions/artifacts/8264420358/zip > /tmp/v8-artifact.zip
+          mkdir -p /tmp/v8-artifact BaynanaAndroid
+          unzip -q /tmp/v8-artifact.zip -d /tmp/v8-artifact
+          unzip -q /tmp/v8-artifact/Baynana-v0.8.0-source.zip -d BaynanaAndroid
+          test -f BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/MainActivity.kt
+          test -f BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/BaynanaApp.kt
+
+      - name: Apply responsive scrolling fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('BaynanaAndroid')
+          path = root / 'app/src/main/java/com/baynana/couplesgame/BaynanaApp.kt'
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              'import androidx.compose.foundation.layout.height\n',
+              'import androidx.compose.foundation.layout.height\nimport androidx.compose.foundation.layout.heightIn\n',
+              1,
+          )
+
+          text = text.replace(
+              '''    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(timerRunning, currentIndex) {''',
+              '''    val haptic = LocalHapticFeedback.current
+    val playScrollState = rememberScrollState()
+
+    LaunchedEffect(currentIndex) {
+        playScrollState.scrollTo(0)
+    }
+
+    LaunchedEffect(timerRunning, currentIndex) {''',
+              1,
+          )
+
+          text = text.replace(
+              '''        Column(
+            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 17.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {''',
+              '''        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(playScrollState)
+                .padding(horizontal = 17.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {''',
+              1,
+          )
+
+          text = text.replace(
+              'modifier = Modifier.weight(1f).fillMaxWidth(),\n                label = "challenge"',
+              'modifier = Modifier.fillMaxWidth(),\n                label = "challenge"',
+              1,
+          )
+          text = text.replace(
+              'modifier = Modifier.fillMaxSize().scale(glow),',
+              'modifier = Modifier.fillMaxWidth().scale(glow),',
+              1,
+          )
+
+          text = text.replace(
+              '''                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Button(onClick = { onComplete(0, false, useSpark, reaction) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp)) { Text(nameOne, maxLines = 1) }
+                        Button(onClick = { onComplete(1, false, useSpark, reaction) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp)) { Text(nameTwo, maxLines = 1) }
+                        FilledTonalButton(onClick = { onComplete(null, false, useSpark, reaction) }, modifier = Modifier.weight(.8f), shape = RoundedCornerShape(16.dp)) { Text("تعادل") }
+                    }''',
+              '''                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { onComplete(0, false, useSpark, reaction) },
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) { Text(nameOne, maxLines = 2, textAlign = TextAlign.Center) }
+                        Button(
+                            onClick = { onComplete(1, false, useSpark, reaction) },
+                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) { Text(nameTwo, maxLines = 2, textAlign = TextAlign.Center) }
+                    }
+                    Spacer(Modifier.height(7.dp))
+                    FilledTonalButton(
+                        onClick = { onComplete(null, false, useSpark, reaction) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("تعادل") }''',
+              1,
+          )
+
+          text = text.replace(
+              '''                OutlinedButton(onClick = onSafeSkip, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                    Text("بديل ألطف — بلا سؤال ولا عقوبة  🌿", color = Color.White)
+                }
+            }
+        }
+    }
+}''',
+              '''                OutlinedButton(onClick = onSafeSkip, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+                    Text("بديل ألطف — بلا سؤال ولا عقوبة  🌿", color = Color.White, textAlign = TextAlign.Center)
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+}''',
+              1,
+          )
+
+          text = text.replace(
+              '    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Velvet, DeepWine))).padding(24.dp), contentAlignment = Alignment.Center) {',
+              '''    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 430.dp)
+            .background(Brush.verticalGradient(listOf(Velvet, DeepWine)))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {''',
+              1,
+          )
+          text = text.replace(
+              'modifier = Modifier.fillMaxSize().padding(22.dp),',
+              'modifier = Modifier.fillMaxWidth().padding(22.dp),',
+              1,
+          )
+          text = text.replace(
+              '''        Surface(
+            color = if (challenge.boldness.rank >= Boldness.INTIMATE.rank) Wine.copy(alpha = .14f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
+            shape = RoundedCornerShape(23.dp)
+        ) {
+            Text(challenge.prompt, modifier = Modifier.padding(20.dp), fontSize = 19.sp, lineHeight = 29.sp, textAlign = TextAlign.Center)
+        }
+        Spacer(Modifier.weight(1f))''',
+              '''        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (challenge.boldness.rank >= Boldness.INTIMATE.rank) Wine.copy(alpha = .14f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
+            shape = RoundedCornerShape(23.dp)
+        ) {
+            Text(
+                challenge.prompt,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                fontSize = 18.sp,
+                lineHeight = 27.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+        Spacer(Modifier.height(18.dp))''',
+              1,
+          )
+
+          if '.verticalScroll(playScrollState)' not in text:
+              raise RuntimeError('Scrolling fix was not applied')
+          if 'modifier = Modifier.weight(1f).fillMaxWidth(),\n                label = "challenge"' in text:
+              raise RuntimeError('Fixed-height challenge layout remains')
+          if 'Spacer(Modifier.weight(1f))' in text[text.index('private fun ChallengeContent'):]:
+              raise RuntimeError('Challenge content still contains weighted spacer')
+
+          path.write_text(text, encoding='utf-8')
+
+          gradle = root / 'app/build.gradle.kts'
+          g = gradle.read_text(encoding='utf-8')
+          g = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 9', g)
+          g = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.8.1"', g)
+          gradle.write_text(g, encoding='utf-8')
+          PY
+
+          grep -F '.verticalScroll(playScrollState)' BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/BaynanaApp.kt
+          grep -F 'playScrollState.scrollTo(0)' BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/BaynanaApp.kt
+          grep -F 'heightIn(min = 430.dp)' BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/BaynanaApp.kt
+
+      - name: Test and build APK
+        working-directory: BaynanaAndroid
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug --stacktrace
+
+      - name: Verify package
+        run: |
+          cp BaynanaAndroid/app/build/outputs/apk/debug/app-debug.apk Baynana-v0.8.1-debug.apk
+          unzip -t Baynana-v0.8.1-debug.apk
+          unzip -p Baynana-v0.8.1-debug.apk classes.dex | strings | grep -F 'MainActivity'
+          sha256sum Baynana-v0.8.1-debug.apk > Baynana-v0.8.1-debug.apk.sha256
+          (cd BaynanaAndroid && zip -qr ../Baynana-v0.8.1-source.zip . -x 'app/build/*' '.gradle/*' 'build/*')
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baynana-v081-APK
+          path: |
+            Baynana-v0.8.1-debug.apk
+            Baynana-v0.8.1-debug.apk.sha256
+            Baynana-v0.8.1-source.zip
+          if-no-files-found: error
+          retention-days: 7
