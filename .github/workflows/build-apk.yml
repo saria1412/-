@@ -32,11 +32,6 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Install Android SDK 36
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
       - name: Reconstruct and extract project
         run: |
           cat build-input/baynana.part.* | base64 -d > Baynana_Android_MVP_Source.zip
