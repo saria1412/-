@@ -1,1 +1,1 @@
-Baynana v0.8.0 fixed launch and private couples edition build source.
+Baynana v0.8.0 fixed launch, MainActivity verification, and 120 private couples cards.
