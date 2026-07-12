@@ -3,6 +3,9 @@ name: Build Baynana v0.8.1 APK
 on:
   pull_request:
     branches: [main]
+  push:
+    branches:
+      - 'baynana-v081-*'
 
 permissions:
   contents: read
