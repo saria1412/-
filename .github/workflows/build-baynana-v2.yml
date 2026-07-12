@@ -1,0 +1,56 @@
+name: Build Baynana v2 APK
+
+on:
+  push:
+    branches:
+      - baynana-v2-build-20260712
+    paths:
+      - build-ready-v2.txt
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Reconstruct project archive
+        run: |
+          cat build-input/baynana-v2.part.* | base64 -d > Baynana_Android_v2_Source.zip
+          echo 'a18282206596f75df71aa605695e9ce47c15fa510097a1c1de374bbc50e34827  Baynana_Android_v2_Source.zip' | sha256sum -c -
+          unzip -t Baynana_Android_v2_Source.zip
+          unzip -q Baynana_Android_v2_Source.zip
+
+      - name: Build debug APK
+        working-directory: BaynanaAndroid
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Prepare output
+        run: |
+          cp BaynanaAndroid/app/build/outputs/apk/debug/app-debug.apk Baynana-v2.0-debug.apk
+          sha256sum Baynana-v2.0-debug.apk > Baynana-v2.0-debug.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baynana-v2-APK
+          path: |
+            Baynana-v2.0-debug.apk
+            Baynana-v2.0-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
