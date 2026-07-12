@@ -66,6 +66,18 @@ if extracted < 50:
     raise RuntimeError('Project extraction incomplete')
 PY
 
+python3 - <<'PY'
+from pathlib import Path
+path = Path('BaynanaAndroid/app/build.gradle.kts')
+text = path.read_text()
+if 'import org.jetbrains.kotlin.gradle.dsl.JvmTarget' not in text:
+    text = 'import org.jetbrains.kotlin.gradle.dsl.JvmTarget\n\n' + text
+text = text.replace('    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n', '')
+if '\nkotlin {\n' not in text:
+    text += '\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(JvmTarget.JVM_17)\n    }\n}\n'
+path.write_text(text)
+PY
+
 test -f BaynanaAndroid/app/build.gradle.kts
 test -f BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/ui/BaynanaApp.kt
 
