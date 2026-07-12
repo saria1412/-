@@ -1,0 +1,63 @@
+name: Build Baynana APK
+
+on:
+  push:
+    branches:
+      - baynana-apk-build-20260712
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Reconstruct and extract project
+        run: |
+          cat build-input/baynana.part.* | base64 -d > Baynana_Android_MVP_Source.zip
+          unzip -t Baynana_Android_MVP_Source.zip
+          unzip -q Baynana_Android_MVP_Source.zip
+
+      - name: Build debug APK
+        working-directory: BaynanaAndroid
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: |
+          cp BaynanaAndroid/app/build/outputs/apk/debug/app-debug.apk Baynana.apk
+          sha256sum Baynana.apk > Baynana.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baynana-APK
+          path: |
+            Baynana.apk
+            Baynana.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
