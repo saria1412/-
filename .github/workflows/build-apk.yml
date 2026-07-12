@@ -34,8 +34,22 @@ jobs:
 
       - name: Reconstruct and extract project
         run: |
-          cat build-input/baynana.part.* | base64 -d > Baynana_Android_MVP_Source.zip
-          unzip -t Baynana_Android_MVP_Source.zip
+          cat \
+            build-input/baynana.part.00 \
+            build-input/baynana.part.01 \
+            build-input/baynana.part.02 \
+            build-input/baynana.p03a \
+            build-input/baynana.p03b \
+            build-input/baynana.p03c \
+            build-input/baynana.p03d \
+            build-input/baynana.part.04a \
+            build-input/baynana.part.04b \
+            build-input/baynana.part.04c \
+            > Baynana_Android_MVP_Source.b64
+          test "$(wc -c < Baynana_Android_MVP_Source.b64)" -eq 47188
+          echo "091a9ce2fda3458843fec1f56d62e5e500be678d211afe0a58841042907c9d81  Baynana_Android_MVP_Source.b64" | sha256sum -c -
+          base64 -d Baynana_Android_MVP_Source.b64 > Baynana_Android_MVP_Source.zip
+          echo "0efbdc9c1c14f4edcad2148e49c70123c22660087f0e44398e6b5e501695db15  Baynana_Android_MVP_Source.zip" | sha256sum -c -
           unzip -q Baynana_Android_MVP_Source.zip
 
       - name: Build debug APK
