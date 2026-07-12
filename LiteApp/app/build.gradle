@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.baynana.couplesgame'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.baynana.couplesgame'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0'
+    }
+}
