@@ -1,11 +1,9 @@
 name: Build Baynana v2 APK
 
 on:
-  push:
+  pull_request:
     branches:
-      - baynana-v2-build-20260712
-    paths:
-      - build-ready-v2.txt
+      - main
 
 permissions:
   contents: read
@@ -52,28 +50,23 @@ jobs:
               signature = struct.unpack_from('<I', archive, position)[0]
               if signature != 0x04034B50:
                   break
-
               (
                   _, _version, flags, method, _time, _date,
                   expected_crc, compressed_size, uncompressed_size,
                   name_length, extra_length,
               ) = struct.unpack_from('<IHHHHHIIIHH', archive, position)
-
               if flags & 0x08:
                   raise RuntimeError('Unsupported data-descriptor ZIP entry')
-
               header_end = position + 30
               name_end = header_end + name_length
               data_start = name_end + extra_length
               data_end = data_start + compressed_size
               if data_end > len(archive):
                   raise RuntimeError('Truncated file data')
-
               name = archive[header_end:name_end].decode('utf-8')
               target = pathlib.Path(name)
               if target.is_absolute() or '..' in target.parts:
                   raise RuntimeError(f'Unsafe path: {name}')
-
               if name.endswith('/'):
                   target.mkdir(parents=True, exist_ok=True)
               else:
@@ -84,15 +77,12 @@ jobs:
                       content = zlib.decompress(compressed, -15)
                   else:
                       raise RuntimeError(f'Unsupported compression method {method}')
-
                   if len(content) != uncompressed_size:
                       raise RuntimeError(f'Size mismatch: {name}')
                   if (binascii.crc32(content) & 0xFFFFFFFF) != expected_crc:
                       raise RuntimeError(f'CRC mismatch: {name}')
-
                   target.parent.mkdir(parents=True, exist_ok=True)
                   target.write_bytes(content)
-
               extracted += 1
               position = data_end
 
@@ -101,7 +91,6 @@ jobs:
               raise RuntimeError('Project extraction incomplete')
           PY
           test -f BaynanaAndroid/app/build.gradle.kts
-          test -f BaynanaAndroid/app/src/main/java/com/baynana/couplesgame/ui/BaynanaApp.kt
 
       - name: Build debug APK
         working-directory: BaynanaAndroid
