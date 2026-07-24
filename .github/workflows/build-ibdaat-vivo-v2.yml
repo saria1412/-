@@ -1,8 +1,6 @@
-name: Build Ibdaat Duma v1.1.0 Vivo APK
+name: Build Ibdaat Duma v1.1.2 APK
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches:
       - 'ibdaat-duma-vivo-v2'
@@ -32,27 +30,24 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore and verify source package
+      - name: Restore and patch source package
         run: |
-          sha256sum ci/ibdaat-v2.part00 ci/ibdaat-v2.part01 ci/ibdaat-v2.part02 ci/ibdaat-v2.part03 ci/ibdaat-v2.part040 ci/ibdaat-v2.part041 ci/ibdaat-v2.part042 ci/ibdaat-v2.part05 | tee part_hashes.txt
           cat ci/ibdaat-v2.part00 ci/ibdaat-v2.part01 ci/ibdaat-v2.part02 ci/ibdaat-v2.part03 ci/ibdaat-v2.part040 ci/ibdaat-v2.part041 ci/ibdaat-v2.part042 ci/ibdaat-v2.part05 | base64 --decode > /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
-          sha256sum /tmp/IbdaatDuma_Android_v1.1.0_Source.zip | tee reconstructed_hash.txt
           echo "b2a4810952d85d01f0763b31ed97db4459ebab3d048e9591b2f5bb4fe2a8c327  /tmp/IbdaatDuma_Android_v1.1.0_Source.zip" | sha256sum -c -
           unzip -q /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          python3 ci/patch-ibdaat-v112.py IbdaatDuma_Android
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('IbdaatDuma_Android/app/src/main/res/values/styles.xml')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('<style name="TextAppearance.Duma" />', '<style name="TextAppearance.Duma" parent="" />')
-          s = s.replace('<style name="Widget.Duma" />', '<style name="Widget.Duma" parent="" />')
-          p.write_text(s, encoding='utf-8')
+          p=Path('IbdaatDuma_Android/app/src/main/res/values/styles.xml')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('<style name="TextAppearance.Duma" />','<style name="TextAppearance.Duma" parent="" />')
+          s=s.replace('<style name="Widget.Duma" />','<style name="Widget.Duma" parent="" />')
+          p.write_text(s,encoding='utf-8')
           PY
-          grep -F 'name="TextAppearance.Duma" parent=""' IbdaatDuma_Android/app/src/main/res/values/styles.xml
-          grep -F 'name="Widget.Duma" parent=""' IbdaatDuma_Android/app/src/main/res/values/styles.xml
-          test -f IbdaatDuma_Android/app/src/main/assets/calculator.html
-          test -f IbdaatDuma_Android/app/src/main/java/com/ibdaatduma/cartoncost/MainActivity.java
-          grep -F "70 × 50" IbdaatDuma_Android/app/src/main/assets/calculator.html
-          grep -F "class AndroidBridge" IbdaatDuma_Android/app/src/main/java/com/ibdaatduma/cartoncost/MainActivity.java
+          grep -F 'أدنى سعر للبيع' IbdaatDuma_Android/app/src/main/assets/calculator.html
+          grep -F 'clearAllInputs' IbdaatDuma_Android/app/src/main/assets/calculator.html
+          grep -F 'سعر البيع المقترح' IbdaatDuma_Android/app/src/main/java/com/ibdaatduma/cartoncost/ProjectsActivity.java
+          grep -F 'versionName = "1.1.2"' IbdaatDuma_Android/app/build.gradle.kts
 
       - name: Install Android SDK components
         run: |
@@ -66,14 +61,12 @@ jobs:
           set -o pipefail
           gradle --no-daemon :app:assembleDebug --stacktrace 2>&1 | tee ../build-output.log
 
-      - name: Upload build diagnostics
+      - name: Upload diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Ibdaat-Duma-v1.1.0-Build-Diagnostics
+          name: Ibdaat-Duma-v1.1.2-Build-Diagnostics
           path: |
-            part_hashes.txt
-            reconstructed_hash.txt
             build-output.log
             IbdaatDuma_Android/app/build/reports
             IbdaatDuma_Android/app/build/outputs/logs
@@ -82,18 +75,18 @@ jobs:
 
       - name: Verify APK
         run: |
-          cp IbdaatDuma_Android/app/build/outputs/apk/debug/app-debug.apk Ibdaat-Duma-v1.1.0-Vivo-debug.apk
-          unzip -t Ibdaat-Duma-v1.1.0-Vivo-debug.apk
-          sha256sum Ibdaat-Duma-v1.1.0-Vivo-debug.apk > Ibdaat-Duma-v1.1.0-Vivo-debug.apk.sha256
-          (cd IbdaatDuma_Android && zip -qr ../IbdaatDuma-Android-v1.1.0-Source.zip . -x 'app/build/*' '.gradle/*' 'build/*')
+          cp IbdaatDuma_Android/app/build/outputs/apk/debug/app-debug.apk Ibdaat-Duma-v1.1.2-Luxury.apk
+          unzip -t Ibdaat-Duma-v1.1.2-Luxury.apk
+          sha256sum Ibdaat-Duma-v1.1.2-Luxury.apk > Ibdaat-Duma-v1.1.2-Luxury.apk.sha256
+          (cd IbdaatDuma_Android && zip -qr ../IbdaatDuma-Android-v1.1.2-Source.zip . -x 'app/build/*' '.gradle/*' 'build/*')
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: Ibdaat-Duma-v1.1.0-Vivo-APK
+          name: Ibdaat-Duma-v1.1.2-Luxury-APK
           path: |
-            Ibdaat-Duma-v1.1.0-Vivo-debug.apk
-            Ibdaat-Duma-v1.1.0-Vivo-debug.apk.sha256
-            IbdaatDuma-Android-v1.1.0-Source.zip
+            Ibdaat-Duma-v1.1.2-Luxury.apk
+            Ibdaat-Duma-v1.1.2-Luxury.apk.sha256
+            IbdaatDuma-Android-v1.1.2-Source.zip
           if-no-files-found: error
           retention-days: 7
