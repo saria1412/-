@@ -32,12 +32,20 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore source package
+      - name: Restore and patch source package
         run: |
           cat ci/ibdaat-source.part* | base64 --decode > /tmp/IbdaatDuma_Android_Source.zip
           echo "382e1c2ed5a61c39517b6e48c23960d6aa4d5c613137b0ec4dd75006c657838c  /tmp/IbdaatDuma_Android_Source.zip" | sha256sum -c -
           unzip -q /tmp/IbdaatDuma_Android_Source.zip
           test -f IbdaatDuma_Android/app/src/main/java/com/ibdaatduma/cartoncost/MainActivity.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('IbdaatDuma_Android/app/src/main/res/values/styles.xml')
+          s = p.read_text(encoding='utf-8')
+          if '<style name="TextAppearance.Duma" />' not in s:
+              s = s.replace('<resources>\n', '<resources>\n    <style name="TextAppearance.Duma" />\n    <style name="Widget.Duma" />\n', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Install Android SDK components
         run: |
