@@ -1,0 +1,39 @@
+name: Export Android Manual Toolchain
+
+on:
+  push:
+    branches:
+      - 'ibdaat-duma-vivo-v2'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android SDK components
+        run: |
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;35.0.0"
+      - name: Package manual build toolchain
+        run: |
+          mkdir -p android-manual-toolchain
+          cp -a "${ANDROID_SDK_ROOT}/build-tools/35.0.0" android-manual-toolchain/build-tools
+          mkdir -p android-manual-toolchain/platforms/android-36
+          cp "${ANDROID_SDK_ROOT}/platforms/android-36/android.jar" android-manual-toolchain/platforms/android-36/
+          tar -czf Android-Manual-Toolchain-35.tar.gz android-manual-toolchain
+          ls -lh Android-Manual-Toolchain-35.tar.gz
+      - name: Upload toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Manual-Toolchain-35
+          path: Android-Manual-Toolchain-35.tar.gz
+          if-no-files-found: error
+          retention-days: 2

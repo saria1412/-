@@ -1,0 +1,61 @@
+name: Diagnose Ibdaat Duma v1.1.3 Source
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - 'ibdaat-duma-vivo-v2'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run source preparation with full log
+        shell: bash
+        run: |
+          set +e
+          exec > >(tee restore.log) 2>&1
+          set -x
+          cat ci/ibdaat-v2.part00 ci/ibdaat-v2.part01 ci/ibdaat-v2.part02 ci/ibdaat-v2.part03 ci/ibdaat-v2.part040 ci/ibdaat-v2.part041 ci/ibdaat-v2.part042 ci/ibdaat-v2.part05 | base64 --decode > /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          echo "reconstruct=$?"
+          sha256sum /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          unzip -q /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          echo "unzip=$?"
+          python3 ci/patch-ibdaat-v112.py IbdaatDuma_Android
+          echo "patch112=$?"
+          python3 ci/patch-ibdaat-v113.py IbdaatDuma_Android
+          echo "patch113=$?"
+          ls -l IbdaatDuma_Android/app/src/main/assets/calculator.html
+          grep -nF 'إعدادات الأسعار' IbdaatDuma_Android/app/src/main/assets/calculator.html | head
+          echo "grep_settings=$?"
+          grep -nF 'DEFAULT_PRICING' IbdaatDuma_Android/app/src/main/assets/calculator.html | head
+          echo "grep_default=$?"
+          grep -nF 'فرق المعادلة' IbdaatDuma_Android/app/src/main/assets/calculator.html | head
+          echo "grep_diff=$?"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('IbdaatDuma_Android/app/src/main/assets/calculator.html').read_text(encoding='utf-8')
+          scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',h,re.S))
+          Path('calculator.js').write_text(scripts,encoding='utf-8')
+          print('html chars',len(h),'js chars',len(scripts))
+          PY
+          node --check calculator.js
+          echo "node_check=$?"
+          exit 0
+      - name: Upload diagnostic log
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ibdaat-v1.1.3-Source-Diagnostic
+          path: |
+            restore.log
+            calculator.js
+          if-no-files-found: warn
+          retention-days: 2
