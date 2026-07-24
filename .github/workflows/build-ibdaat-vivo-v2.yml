@@ -34,7 +34,9 @@ jobs:
 
       - name: Restore and verify source package
         run: |
+          sha256sum ci/ibdaat-v2.part* | tee part_hashes.txt
           cat ci/ibdaat-v2.part* | base64 --decode > /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          sha256sum /tmp/IbdaatDuma_Android_v1.1.0_Source.zip | tee reconstructed_hash.txt
           echo "b2a4810952d85d01f0763b31ed97db4459ebab3d048e9591b2f5bb4fe2a8c327  /tmp/IbdaatDuma_Android_v1.1.0_Source.zip" | sha256sum -c -
           unzip -q /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
           test -f IbdaatDuma_Android/app/src/main/assets/calculator.html
@@ -57,6 +59,8 @@ jobs:
         with:
           name: Ibdaat-Duma-v1.1.0-Build-Diagnostics
           path: |
+            part_hashes.txt
+            reconstructed_hash.txt
             IbdaatDuma_Android/app/build/reports
             IbdaatDuma_Android/app/build/outputs/logs
           if-no-files-found: ignore
