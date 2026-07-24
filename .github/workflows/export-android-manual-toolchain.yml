@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'ibdaat-duma-vivo-v2'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
