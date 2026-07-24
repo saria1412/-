@@ -42,8 +42,8 @@ jobs:
           from pathlib import Path
           p = Path('IbdaatDuma_Android/app/src/main/res/values/styles.xml')
           s = p.read_text(encoding='utf-8')
-          if '<style name="TextAppearance.Duma" />' not in s:
-              s = s.replace('<resources>\n', '<resources>\n    <style name="TextAppearance.Duma" />\n    <style name="Widget.Duma" />\n', 1)
+          if '<style name="TextAppearance.Duma" parent="" />' not in s:
+              s = s.replace('<resources>\n', '<resources>\n    <style name="TextAppearance.Duma" parent="" />\n    <style name="Widget.Duma" parent="" />\n', 1)
           p.write_text(s, encoding='utf-8')
           PY
 
