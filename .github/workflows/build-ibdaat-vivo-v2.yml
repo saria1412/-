@@ -39,6 +39,16 @@ jobs:
           sha256sum /tmp/IbdaatDuma_Android_v1.1.0_Source.zip | tee reconstructed_hash.txt
           echo "b2a4810952d85d01f0763b31ed97db4459ebab3d048e9591b2f5bb4fe2a8c327  /tmp/IbdaatDuma_Android_v1.1.0_Source.zip" | sha256sum -c -
           unzip -q /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('IbdaatDuma_Android/app/src/main/res/values/styles.xml')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<style name="TextAppearance.Duma" />', '<style name="TextAppearance.Duma" parent="" />')
+          s = s.replace('<style name="Widget.Duma" />', '<style name="Widget.Duma" parent="" />')
+          p.write_text(s, encoding='utf-8')
+          PY
+          grep -F 'name="TextAppearance.Duma" parent=""' IbdaatDuma_Android/app/src/main/res/values/styles.xml
+          grep -F 'name="Widget.Duma" parent=""' IbdaatDuma_Android/app/src/main/res/values/styles.xml
           test -f IbdaatDuma_Android/app/src/main/assets/calculator.html
           test -f IbdaatDuma_Android/app/src/main/java/com/ibdaatduma/cartoncost/MainActivity.java
           grep -F "70 × 50" IbdaatDuma_Android/app/src/main/assets/calculator.html
