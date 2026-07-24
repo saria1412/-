@@ -1,6 +1,8 @@
 name: Build Ibdaat Duma v1.1.2 APK
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - 'ibdaat-duma-vivo-v2'
