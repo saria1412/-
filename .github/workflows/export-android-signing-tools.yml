@@ -1,0 +1,40 @@
+name: Export Android Signing Tools
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - 'ibdaat-duma-vivo-v2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android build tools
+        run: |
+          yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Collect tools
+        run: |
+          mkdir -p android-signing-tools/lib
+          cp "${ANDROID_SDK_ROOT}/build-tools/35.0.0/zipalign" android-signing-tools/
+          cp "${ANDROID_SDK_ROOT}/build-tools/35.0.0/apksigner" android-signing-tools/
+          cp "${ANDROID_SDK_ROOT}/build-tools/35.0.0/lib/apksigner.jar" android-signing-tools/lib/
+          chmod +x android-signing-tools/zipalign android-signing-tools/apksigner
+          ./android-signing-tools/zipalign -h >/dev/null 2>&1 || true
+          java -jar android-signing-tools/lib/apksigner.jar --version
+      - name: Upload tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-Build-Tools-35-Signing
+          path: android-signing-tools
+          if-no-files-found: error
+          retention-days: 2
