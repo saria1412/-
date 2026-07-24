@@ -1,6 +1,8 @@
 name: Build Ibdaat Duma v1.1.3 Modern Signed APK
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - 'ibdaat-duma-v113-modern-signing'
