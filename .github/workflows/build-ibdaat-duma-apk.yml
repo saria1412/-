@@ -46,7 +46,16 @@ jobs:
 
       - name: Build debug APK
         working-directory: IbdaatDuma_Android
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+        run: gradle --no-daemon :app:assembleDebug --stacktrace > ../gradle-build.log 2>&1
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ibdaat-Duma-Build-Diagnostics
+          path: gradle-build.log
+          if-no-files-found: error
+          retention-days: 2
 
       - name: Verify APK
         run: |
