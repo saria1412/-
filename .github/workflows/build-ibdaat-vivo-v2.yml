@@ -40,7 +40,8 @@ jobs:
           echo "b2a4810952d85d01f0763b31ed97db4459ebab3d048e9591b2f5bb4fe2a8c327  /tmp/IbdaatDuma_Android_v1.1.0_Source.zip" | sha256sum -c -
           unzip -q /tmp/IbdaatDuma_Android_v1.1.0_Source.zip
           python3 ci/patch-ibdaat-v112.py IbdaatDuma_Android
-          python3 ci/patch-ibdaat-v113.py IbdaatDuma_Android
+          cat ci/patch-v113-fixed.part00 ci/patch-v113-fixed.part01 ci/patch-v113-fixed.part02 ci/patch-v113-fixed.part03 ci/patch-v113-fixed.part04 ci/patch-v113-fixed.part05 ci/patch-v113-fixed.part06 ci/patch-v113-fixed.part07 ci/patch-v113-fixed.part08 | base64 --decode > /tmp/patch-ibdaat-v113-fixed.py
+          python3 /tmp/patch-ibdaat-v113-fixed.py IbdaatDuma_Android
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -97,6 +98,7 @@ jobs:
           name: Ibdaat-Duma-v1.1.3-Fixed-Diagnostics
           path: |
             /tmp/calculator.js
+            /tmp/patch-ibdaat-v113-fixed.py
             IbdaatDuma_Android/app/build/reports
             IbdaatDuma_Android/app/build/outputs/logs
           if-no-files-found: ignore
