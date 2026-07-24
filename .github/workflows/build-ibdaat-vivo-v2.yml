@@ -51,7 +51,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: IbdaatDuma_Android
-        run: gradle --no-daemon :app:assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:assembleDebug --stacktrace 2>&1 | tee ../build-output.log
 
       - name: Upload build diagnostics
         if: failure()
@@ -61,6 +64,7 @@ jobs:
           path: |
             part_hashes.txt
             reconstructed_hash.txt
+            build-output.log
             IbdaatDuma_Android/app/build/reports
             IbdaatDuma_Android/app/build/outputs/logs
           if-no-files-found: ignore
