@@ -1,0 +1,100 @@
+k" type="submit">إرسال طلب الحساب</button>
+      </form>
+    </div>
+  </section>
+
+  <section id="approvalScreen" class="screen-center" hidden>
+    <div class="status-card">
+      <div id="approvalIcon" class="status-icon">⏳</div>
+      <h2 id="approvalTitle">الحساب بانتظار موافقة الأدمن</h2>
+      <p id="approvalMessage">تم تسجيل حسابك، لكن لا يمكن فتح بيانات المخزون قبل اعتماد الحساب من مدير النظام.</p>
+      <button id="refreshApprovalBtn" class="btn btn-main">فحص حالة الموافقة</button>
+      <button id="pendingLogoutBtn" class="btn btn-neutral">تسجيل الخروج</button>
+    </div>
+  </section>
+
+  <main id="appScreen" class="app-wrap" hidden>
+    <div class="stripe-bar"></div>
+    <header class="mast">
+      <div class="brand">
+        <img src="logo.svg" alt="شعار مصنع إبداعات دوما">
+        <div>
+          <h1>سجل مخزون خام الورق</h1>
+          <p>مصنع إبداعات دوما — بيانات موحّدة لكل المستخدمين المعتمدين</p>
+        </div>
+      </div>
+      <div class="mast-actions">
+        <div id="syncPill" class="sync-pill"><span class="sync-dot"></span><span id="syncText">متصل ومتزامن</span></div>
+        <button id="installBtn" class="btn btn-ghost btn-sm" type="button" hidden>📲 تثبيت على الجوال</button>
+        <button id="accountBtn" class="user-pill" type="button">
+          <strong id="currentUsername"></strong>
+          <span id="currentRole" class="role-badge"></span>
+        </button>
+        <button id="logoutBtn" class="btn btn-neutral btn-sm" type="button">خروج</button>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="أقسام النظام">
+      <button data-tab="inventory" class="active">📦 المخزون الحالي</button>
+      <button data-tab="add">➕ تسجيل رول جديد</button>
+      <button data-tab="log">🧾 سجل الحركة</button>
+      <button data-tab="backup">💾 النسخ الاحتياطي</button>
+      <button data-tab="admin" id="adminTabButton" hidden>👥 إدارة المستخدمين</button>
+    </nav>
+
+    <section id="panel-inventory" class="panel tab-panel">
+      <h2>المخزون الحالي</h2>
+      <div id="statsRow" class="stats-row"></div>
+      <div class="toolbar">
+        <input type="search" id="searchBox" placeholder="بحث بالنوع أو اللون أو بلد المنشأ">
+        <select id="filterCategory">
+          <option value="">كل الفئات</option>
+          <option value="paper">رولات الورق</option>
+          <option value="other">القصدير والمتلايز</option>
+        </select>
+        <select id="filterSubtype"><option value="">كل الأنواع</option></select>
+      </div>
+      <div id="inventoryGrid" class="grid-cards"></div>
+
+      <div class="summary-wrap">
+        <h3>📊 ملخص المخزون حسب الصنف</h3>
+        <div class="table-wrap" style="max-height:none;">
+          <table>
+            <thead><tr><th>الصنف</th><th>عدد الرولات</th><th>الوزن الإجمالي (كجم)</th></tr></thead>
+            <tbody id="summaryBody"></tbody>
+            <tfoot><tr><td>الإجمالي العام</td><td id="sumTotalCount">0</td><td id="sumTotalWeight">0</td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-add" class="panel tab-panel" hidden>
+      <h2>تسجيل رول جديد في المخزون</h2>
+      <div id="categoryToggle" class="cat-toggle">
+        <label id="catPaperLabel" class="cat-option selected"><input type="radio" name="category" value="paper" checked> رول ورق عادي / زبدة / جي بي</label>
+        <label id="catOtherLabel" class="cat-option"><input type="radio" name="category" value="other"> قصدير / متلايز</label>
+      </div>
+      <form id="addForm">
+        <div class="field-grid">
+          <div><label class="req" for="subtype">النوع الفرعي</label><select id="subtype" required></select></div>
+          <div><label class="req" for="rollSize">مقاس الرول (سم)</label><input id="rollSize" type="number" min="0.01" step="0.01" required placeholder="مثال: 90"></div>
+          <div><label class="req" for="rollWeight">وزن الرول (كجم)</label><input id="rollWeight" type="number" min="0.01" step="0.01" required placeholder="مثال: 320.5"></div>
+          <div id="colorField"><label class="req" for="rollColor">لون الورق</label><select id="rollColor"><option>بني</option><option>أبيض</option></select></div>
+          <div id="grammageField"><label class="req" for="rollGrammage">الجراماج (جم/م²)</label><input id="rollGrammage" type="number" min="1" step="1" placeholder="مثال: 70"></div>
+          <div><label for="rollOrigin">بلد المنشأ</label><input id="rollOrigin" maxlength="80" placeholder="مثال: إندونيسيا"></div>
+          <div><label class="req" for="entryMethod">طريقة الإدخال</label><select id="entryMethod"><option>شراء</option><option>استعارة</option><option>تعويض</option><option>إنتاج داخلي</option><option>أخرى</option></select></div>
+        </div>
+        <div class="field" style="margin-top:14px;"><label for="entryNotes">ملاحظات على الرول</label><textarea id="entryNotes" maxlength="1000" placeholder="المورّد، رقم الفاتورة، حالة الرول أو أي تفاصيل إضافية"></textarea></div>
+        <div class="form-actions"><button class="btn btn-main" type="submit">✅ حفظ في المخزون</button></div>
+      </form>
+    </section>
+
+    <section id="panel-log" class="panel tab-panel" hidden>
+      <h2>سجل حركة الدخول والخروج</h2>
+      <div class="filter-panel">
+        <div class="filter-head"><span>🔍 تصفية النتائج</span><button id="resetLogFiltersBtn" type="button" class="btn btn-ghost btn-sm">إعادة تعيين</button></div>
+        <div class="filter-grid">
+          <div><label for="filterMoveType">نوع الحركة</label><select id="filterMoveType"><option value="">الكل</option><option value="in">دخول فقط</option><option value="out">خروج فقط</option></select></div>
+          <div><label for="filterLogSubtype">الصنف</label><select id="filterLogSubtype"><option value="">كل الأصناف</option></select></div>
+          <div><label for="filterLogReason">السبب / الطريقة</label><select id="filterLogReason"><option value="">كل الأسباب</option></select></div>
+          <div><label for="filterDateFrom">من تاريخ</label><input id="filterDateFrom" type="date"></di
