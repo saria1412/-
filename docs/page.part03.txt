@@ -1,0 +1,106 @@
+rder-radius: 13px; background: var(--yellow-soft); border: 1px solid #eed18d; }
+.security-box h3 { margin-top: 0; }
+
+.modal-bg { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 15px; background: rgba(15,44,77,.56); }
+.modal-bg.show { display: flex; }
+.modal { width: min(100%, 500px); max-height: 90vh; overflow: auto; background: var(--card); border-radius: 17px; padding: 22px; box-shadow: var(--shadow-lg); }
+.modal h3 { margin-top: 0; color: var(--navy-2); }
+.avail-box { background: var(--navy-soft); border-radius: 10px; padding: 12px; margin-bottom: 13px; line-height: 1.7; font-size: 13px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(16px); max-width: min(92vw, 620px); background: var(--navy-2); color: #fff; border-radius: 20px; padding: 10px 18px; font-weight: 800; font-size: 13px; opacity: 0; pointer-events: none; transition: .25s; z-index: 300; box-shadow: var(--shadow-lg); text-align: center; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.loading-overlay { position: fixed; inset: 0; z-index: 250; display: none; place-items: center; background: rgba(244,247,250,.72); backdrop-filter: blur(2px); }
+.loading-overlay.show { display: grid; }
+.spinner { width: 42px; height: 42px; border-radius: 50%; border: 4px solid var(--navy-soft); border-top-color: var(--navy); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 720px) {
+  .app-wrap { padding: 10px 9px 40px; }
+  .mast { padding: 13px; }
+  .brand { min-width: 0; flex: 1 1 100%; }
+  .brand img { height: 42px; max-width: 165px; }
+  .brand h1 { font-size: 17px; }
+  .mast-actions { width: 100%; }
+  .sync-pill, .user-pill { flex: 1 1 auto; justify-content: center; }
+  .tabs { flex-wrap: wrap; overflow: visible; padding-bottom: 0; }
+  .tabs button { flex: 1 1 calc(50% - 8px); padding-inline: 10px; }
+  .tabs button:last-child { flex-basis: 100%; }
+  .panel { padding: 15px 12px; }
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .stats-row .stat:last-child { grid-column: 1 / -1; }
+  .admin-summary { grid-template-columns: 1fr 1fr; }
+  .admin-summary .admin-card:last-child { grid-column: 1 / -1; }
+  .field-grid { grid-template-columns: 1fr; }
+  th, td { padding: 9px 8px; }
+}
+
+</style>
+</head>
+<body>
+
+  <section id="setupScreen" class="screen-center" hidden>
+    <div class="setup-card">
+      <div class="auth-brand">
+        <img src="logo.svg" alt="شعار مصنع إبداعات دوما">
+        <h1>إعداد الاتصال مطلوب</h1>
+        <p>لم يتم ربط النسخة بقاعدة بيانات Supabase بعد.</p>
+      </div>
+      <p class="help" style="font-size:13px;line-height:1.8;">
+        افتح ملف <b dir="ltr">config.js</b> وضع رابط المشروع والمفتاح العام، ثم أعد نشر مجلد الموقع.
+        لا تضع مفتاح <b dir="ltr">service_role</b> في هذا الملف.
+      </p>
+    </div>
+  </section>
+
+  <section id="authScreen" class="screen-center" hidden>
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="logo.svg" alt="شعار مصنع إبداعات دوما">
+        <h1>سجل مخزون خام الورق</h1>
+        <p>دخول آمن ومزامنة فورية بين الجوال والكمبيوتر</p>
+      </div>
+
+      <div class="auth-switch" aria-label="اختيار الدخول أو التسجيل">
+        <button type="button" id="showLoginBtn" class="active">تسجيل الدخول</button>
+        <button type="button" id="showRegisterBtn">طلب حساب جديد</button>
+      </div>
+
+      <form id="loginForm" autocomplete="on">
+        <div class="field">
+          <label class="req" for="loginUsername">اسم المستخدم</label>
+          <input id="loginUsername" name="username" dir="ltr" inputmode="text" autocomplete="username" required maxlength="30" placeholder="username">
+        </div>
+        <div class="field">
+          <label class="req" for="loginPassword">كلمة السر</label>
+          <input id="loginPassword" name="password" dir="ltr" type="password" autocomplete="current-password" required minlength="8" placeholder="••••••••">
+        </div>
+        <div id="loginError" class="error-text" aria-live="polite"></div>
+        <button class="btn btn-main btn-block" type="submit">دخول</button>
+      </form>
+
+      <form id="registerForm" autocomplete="off" hidden>
+        <div class="field">
+          <label class="req" for="registerFullName">الاسم الكامل</label>
+          <input id="registerFullName" required maxlength="80" placeholder="اسم الموظف">
+        </div>
+        <div class="field">
+          <label class="req" for="registerUsername">اسم المستخدم</label>
+          <input id="registerUsername" dir="ltr" inputmode="text" autocomplete="username" required minlength="3" maxlength="30" placeholder="username" pattern="[A-Za-z0-9._-]+">
+          <div class="help">أحرف إنجليزية وأرقام فقط، ويمكن استخدام النقطة والشرطة.</div>
+        </div>
+        <div class="field">
+          <label class="req" for="registerPassword">كلمة السر</label>
+          <input id="registerPassword" dir="ltr" type="password" autocomplete="new-password" required minlength="8" placeholder="8 خانات على الأقل">
+        </div>
+        <div class="field">
+          <label class="req" for="registerPasswordConfirm">تأكيد كلمة السر</label>
+          <input id="registerPasswordConfirm" dir="ltr" type="password" autocomplete="new-password" required minlength="8" placeholder="إعادة كلمة السر">
+        </div>
+        <div id="bootstrapCodeField" class="field bootstrap-field" hidden>
+          <label class="req" for="registerBootstrapCode">رمز تهيئة الأدمن الأول</label>
+          <input id="registerBootstrapCode" dir="ltr" type="password" autocomplete="off" placeholder="PM-xxxxxxxx">
+          <div class="help">يظهر هذا الحقل فقط لاسم مستخدم الأدمن الأول، ويُستخدم الرمز مرة واحدة.</div>
+        </div>
+        <div id="registerError" class="error-text" aria-live="polite"></div>
+        <button class="btn btn-main btn-bloc
