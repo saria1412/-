@@ -1,0 +1,143 @@
+    list.forEach((roll) => {
+      const key = JSON.stringify([
+        roll.category, roll.subtype, Number(roll.size), roll.color || null,
+        roll.grammage === null ? null : Number(roll.grammage), roll.origin || null
+      ]);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          category: roll.category,
+          subtype: roll.subtype,
+          size: Number(roll.size),
+          color: roll.color,
+          grammage: roll.grammage === null ? null : Number(roll.grammage),
+          origin: roll.origin,
+          rolls: [],
+          totalWeight: 0
+        });
+      }
+      const group = map.get(key);
+      group.rolls.push(roll);
+      group.totalWeight += Number(roll.weight || 0);
+    });
+    return [...map.values()];
+  }
+
+  function renderInventorySummary(inStock) {
+    const summary = new Map();
+    inStock.forEach((roll) => {
+      const current = summary.get(roll.subtype) || { count: 0, weight: 0 };
+      current.count += 1;
+      current.weight += Number(roll.weight || 0);
+      summary.set(roll.subtype, current);
+    });
+
+    if (!summary.size) {
+      els.summaryBody.innerHTML = '<tr><td colspan="3">لا توجد بيانات بعد.</td></tr>';
+    } else {
+      els.summaryBody.innerHTML = [...summary.entries()]
+        .sort(([a], [b]) => a.localeCompare(b, 'ar'))
+        .map(([subtype, value]) => `<tr><td>${escapeHtml(subtype)}</td><td>${value.count}</td><td>${value.weight.toFixed(1)}</td></tr>`)
+        .join('');
+    }
+    els.sumTotalCount.textContent = String(inStock.length);
+    els.sumTotalWeight.textContent = inStock.reduce((sum, roll) => sum + Number(roll.weight || 0), 0).toFixed(1);
+  }
+
+  function openExitModal(groupIndex) {
+    const group = state.currentGroups[groupIndex];
+    if (!group) return;
+    state.exitGroup = group;
+    els.exitGroupSummary.innerHTML = `
+      <b>${escapeHtml(group.subtype)}</b> — مقاس ${formatNumber(group.size)} سم
+      ${group.color ? ` — ${escapeHtml(group.color)}` : ''}
+      ${group.grammage ? ` — جراماج ${formatNumber(group.grammage)}` : ''}<br>
+      المتاح حاليًا: <b>${group.totalWeight.toFixed(1)} كجم</b> على <b>${group.rolls.length}</b> رول
+    `;
+    els.exitWeight.value = '';
+    els.exitWeight.max = String(group.totalWeight);
+    els.exitWeightHint.textContent = `أقصى كمية متاحة حاليًا: ${group.totalWeight.toFixed(1)} كجم`;
+    els.exitNotes.value = '';
+    els.exitModal.classList.add('show');
+    els.exitWeight.focus();
+  }
+
+  function closeExitModal() {
+    state.exitGroup = null;
+    els.exitModal.classList.remove('show');
+  }
+
+  async function confirmExit() {
+    const group = state.exitGroup;
+    const amount = numberOrNull(els.exitWeight.value);
+    if (!group || !amount || amount <= 0) {
+      showToast('أدخل وزنًا صحيحًا للإخراج.');
+      return;
+    }
+    if (amount > group.totalWeight + 0.001) {
+      showToast(`الكمية المطلوبة أكبر من المتاح (${group.totalWeight.toFixed(1)} كجم).`);
+      return;
+    }
+
+    els.confirmExitBtn.disabled = true;
+    setSyncStatus('syncing');
+    try {
+      const { data, error } = await state.client.rpc('exit_stock', {
+        p_category: group.category,
+        p_subtype: group.subtype,
+        p_size: group.size,
+        p_color: group.color,
+        p_grammage: group.grammage,
+        p_origin: group.origin,
+        p_amount: amount,
+        p_reason: els.exitReason.value,
+        p_notes: emptyToNull(els.exitNotes.value)
+      });
+      if (error) throw error;
+      closeExitModal();
+      await loadData(false);
+      showToast(`تم إخراج ${amount.toFixed(1)} كجم. المتبقي في الصنف ${Number(data?.available_after || 0).toFixed(1)} كجم.`);
+    } catch (error) {
+      console.error('Exit stock error:', error);
+      showToast(cleanDbError(error));
+      await loadData(false);
+    } finally {
+      els.confirmExitBtn.disabled = false;
+    }
+  }
+
+  function populateLogFilters() {
+    const subtypeValue = els.filterLogSubtype.value;
+    const reasonValue = els.filterLogReason.value;
+    const allSubtypes = [...SUBTYPES.paper, ...SUBTYPES.other];
+    const reasons = [...new Set(state.transactions.map((item) => item.label).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+    els.filterLogSubtype.innerHTML = '<option value="">كل الأصناف</option>' +
+      allSubtypes.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+    els.filterLogReason.innerHTML = '<option value="">كل الأسباب</option>' +
+      reasons.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+    els.filterLogSubtype.value = subtypeValue;
+    els.filterLogReason.value = reasonValue;
+  }
+
+  function renderLog() {
+    populateLogFilters();
+    const moveType = els.filterMoveType.value;
+    const subtype = els.filterLogSubtype.value;
+    const reason = els.filterLogReason.value;
+    const dateFrom = els.filterDateFrom.value ? new Date(`${els.filterDateFrom.value}T00:00:00`) : null;
+    const dateTo = els.filterDateTo.value ? new Date(`${els.filterDateTo.value}T23:59:59`) : null;
+    const minWeight = numberOrNull(els.filterWeightMin.value);
+    const maxWeight = numberOrNull(els.filterWeightMax.value);
+
+    let list = [...state.transactions];
+    if (moveType) list = list.filter((item) => item.type === moveType);
+    if (subtype) list = list.filter((item) => extractSubtype(item.roll_summary) === subtype);
+    if (reason) list = list.filter((item) => item.label === reason);
+    if (dateFrom) list = list.filter((item) => new Date(item.occurred_at) >= dateFrom);
+    if (dateTo) list = list.filter((item) => new Date(item.occurred_at) <= dateTo);
+    if (minWeight !== null) list = list.filter((item) => Number(item.amount) >= minWeight);
+    if (maxWeight !== null) list = list.filter((item) => Number(item.amount) <= maxWeight);
+    list.sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at));
+    state.currentLogList = list;
+
+    const totalIn = list.filter((item) => item.type === 'in').reduce((sum, item) => sum + Number(
