@@ -1,0 +1,112 @@
+v>
+          <div><label for="filterDateTo">إلى تاريخ</label><input id="filterDateTo" type="date"></div>
+          <div><label for="filterWeightMin">أقل وزن</label><input id="filterWeightMin" type="number" min="0" step="0.01" placeholder="كجم"></div>
+          <div><label for="filterWeightMax">أعلى وزن</label><input id="filterWeightMax" type="number" min="0" step="0.01" placeholder="كجم"></div>
+        </div>
+      </div>
+      <div class="result-bar"><span id="logResultCount">0 حركة</span><span id="logResultWeight"></span></div>
+      <div class="export-row">
+        <button id="exportExcelBtn" type="button" class="btn btn-ghost btn-sm">📊 تصدير Excel</button>
+        <button id="exportPdfBtn" type="button" class="btn btn-ghost btn-sm">🖨️ طباعة / PDF</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>التاريخ والوقت</th><th>الحركة</th><th>الصنف</th><th>الوزن</th><th>السبب / الطريقة</th><th>ملاحظات</th><th>المستخدم</th></tr></thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel-backup" class="panel tab-panel" hidden>
+      <h2>النسخ الاحتياطي واستعادة البيانات</h2>
+      <div class="backup-box">
+        <div><b>تنزيل نسخة احتياطية كاملة</b><p>يحفظ الرولات وسجل الحركة بصيغة JSON على جهازك.</p></div>
+        <button id="exportBackupBtn" type="button" class="btn btn-main">⬇️ تنزيل النسخة</button>
+      </div>
+      <div id="restoreBox" class="backup-box" hidden>
+        <div><b>استعادة نسخة احتياطية — للأدمن فقط</b><p>سيتم استبدال بيانات المخزون الحالية لدى جميع المستخدمين. هذه العملية مسجلة باسم الأدمن المنفذ.</p></div>
+        <div>
+          <input id="backupFile" type="file" accept="application/json" style="margin-bottom:8px;">
+          <button id="restoreBackupBtn" type="button" class="btn btn-orange">⬆️ استعادة الآن</button>
+        </div>
+      </div>
+      <p class="help">يُنصح بحفظ نسخة احتياطية أسبوعية خارج جهاز المصنع.</p>
+    </section>
+
+    <section id="panel-admin" class="panel tab-panel" hidden>
+      <h2>إدارة المستخدمين والموافقات</h2>
+      <div id="adminSummary" class="admin-summary"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>اسم المستخدم</th><th>الاسم الكامل</th><th>الحالة</th><th>الصلاحية</th><th>تاريخ الطلب</th><th>الإجراء</th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+      <div class="security-box">
+        <h3>حماية النظام</h3>
+        <p class="help" style="font-size:13px;line-height:1.8;">لا يستطيع الحساب المعلّق أو المرفوض قراءة المخزون أو تعديله. الموافقة أو الرفض تطبّق فورًا على جميع الأجهزة والجلسات.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="exitModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="exitModalTitle">
+    <div class="modal">
+      <h3 id="exitModalTitle">إخراج كمية من المخزون</h3>
+      <div id="exitGroupSummary" class="avail-box"></div>
+      <div class="field"><label class="req" for="exitWeight">الوزن المراد إخراجه (كجم)</label><input id="exitWeight" type="number" min="0.01" step="0.01"><div id="exitWeightHint" class="help"></div></div>
+      <div class="field"><label class="req" for="exitReason">سبب الإخراج</label><select id="exitReason"><option>بيع</option><option>استخدام في الإنتاج</option><option>استعارة لجهة أخرى</option><option>تالف / هالك</option><option>أخرى</option></select></div>
+      <div class="field"><label for="exitNotes">ملاحظات</label><textarea id="exitNotes" maxlength="1000"></textarea></div>
+      <div class="modal-actions"><button id="cancelExitBtn" type="button" class="btn btn-neutral">إلغاء</button><button id="confirmExitBtn" type="button" class="btn btn-orange">تأكيد الإخراج</button></div>
+    </div>
+  </div>
+
+  <div id="accountModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+    <div class="modal">
+      <h3 id="accountModalTitle">الحساب والأمان</h3>
+      <div class="avail-box"><b id="accountUsername"></b><br><span id="accountFullName"></span></div>
+      <form id="changePasswordForm">
+        <div class="field"><label class="req" for="newPassword">كلمة السر الجديدة</label><input id="newPassword" dir="ltr" type="password" minlength="8" required autocomplete="new-password"></div>
+        <div class="field"><label class="req" for="newPasswordConfirm">تأكيد كلمة السر</label><input id="newPasswordConfirm" dir="ltr" type="password" minlength="8" required autocomplete="new-password"></div>
+        <div id="passwordError" class="error-text" aria-live="polite"></div>
+        <div class="modal-actions"><button id="closeAccountBtn" type="button" class="btn btn-neutral">إغلاق</button><button type="submit" class="btn btn-main">تغيير كلمة السر</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay"><div class="spinner" aria-label="جاري التحميل"></div></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+/* إعداد الاتصال العام بقاعدة البيانات. لا يحتوي هذا الملف على أي مفتاح إداري. */
+window.APP_CONFIG = Object.freeze({
+  SUPABASE_URL: 'https://onpcuwxzyolrmdqmjxcz.supabase.co',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_sYbD4MmZ7BBIxHBczmmBpA_MwFuIXdr',
+  INTERNAL_EMAIL_DOMAIN: 'paper-mill.example.com',
+  BOOTSTRAP_ADMIN_USERNAME: 'moazkhoulani'
+});
+
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.8"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+(() => {
+  'use strict';
+
+  const SUBTYPES = Object.freeze({
+    paper: ['رولات ورق عادي', 'رولات ورق زبدة', 'رولات ورق جي بي'],
+    other: ['ورق قصدير', 'متلايز فضي', 'متلايز شفاف']
+  });
+
+  const $ = (id) => document.getElementById(id);
+  const els = {};
+  const state = {
+    client: null,
+    user: null,
+    profile: null,
+    rolls: [],
+    transactions: [],
+    users: [],
+    currentLogList: [],
+    currentGroups: [],
+    exitGroup: null,
+    appChannel: 
