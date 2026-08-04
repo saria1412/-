@@ -1,0 +1,139 @@
+}
+
+  async function stopRealtime() {
+    await stopAppRealtime();
+    if (state.profileChannel && state.client) {
+      await state.client.removeChannel(state.profileChannel);
+      state.profileChannel = null;
+    }
+  }
+
+  function setSyncStatus(status) {
+    els.syncPill.classList.toggle('offline', status === 'offline');
+    if (status === 'syncing') els.syncText.textContent = 'جاري المزامنة...';
+    else if (status === 'offline') els.syncText.textContent = 'غير متصل';
+    else els.syncText.textContent = 'متصل ومتزامن';
+  }
+
+  function updateConnectivity() {
+    if (!els.syncPill) return;
+    setSyncStatus(navigator.onLine ? 'online' : 'offline');
+  }
+
+  function refreshSubtypeOptions(category) {
+    els.subtype.innerHTML = SUBTYPES[category].map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+    const isPaper = category === 'paper';
+    els.colorField.hidden = !isPaper;
+    els.grammageField.hidden = !isPaper;
+    els.rollColor.required = isPaper;
+    els.rollGrammage.required = isPaper;
+    els.catPaperLabel.classList.toggle('selected', isPaper);
+    els.catOtherLabel.classList.toggle('selected', !isPaper);
+  }
+
+  function populateInventorySubtypeFilter() {
+    const category = els.filterCategory.value;
+    const current = els.filterSubtype.value;
+    const options = category ? SUBTYPES[category] : [...SUBTYPES.paper, ...SUBTYPES.other];
+    els.filterSubtype.innerHTML = '<option value="">كل الأنواع</option>' +
+      options.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+    if (options.includes(current)) els.filterSubtype.value = current;
+  }
+
+  async function addRoll(event) {
+    event.preventDefault();
+    const category = document.querySelector('input[name="category"]:checked').value;
+    const payload = {
+      p_category: category,
+      p_subtype: els.subtype.value,
+      p_size: numberOrNull(els.rollSize.value),
+      p_weight: numberOrNull(els.rollWeight.value),
+      p_color: category === 'paper' ? els.rollColor.value : null,
+      p_grammage: category === 'paper' ? numberOrNull(els.rollGrammage.value) : null,
+      p_origin: emptyToNull(els.rollOrigin.value),
+      p_entry_method: els.entryMethod.value,
+      p_entry_notes: emptyToNull(els.entryNotes.value)
+    };
+
+    if (!payload.p_size || !payload.p_weight || (category === 'paper' && !payload.p_grammage)) {
+      showToast('أكمل الحقول المطلوبة بقيم صحيحة.');
+      return;
+    }
+
+    const button = els.addForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    setSyncStatus('syncing');
+    try {
+      const { error } = await state.client.rpc('add_roll', payload);
+      if (error) throw error;
+      els.addForm.reset();
+      document.querySelector('input[name="category"][value="paper"]').checked = true;
+      refreshSubtypeOptions('paper');
+      await loadData(false);
+      activateTab('inventory');
+      showToast('تم تسجيل الرول ومزامنته مع جميع الأجهزة.');
+    } catch (error) {
+      console.error('Add roll error:', error);
+      showToast(cleanDbError(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function renderAll() {
+    renderInventory();
+    renderLog();
+  }
+
+  function renderInventory() {
+    const inStock = state.rolls.filter((roll) => roll.status === 'in_stock' && Number(roll.weight) > 0);
+    const totalWeight = inStock.reduce((sum, roll) => sum + Number(roll.weight || 0), 0);
+    els.statsRow.innerHTML = `
+      <div class="stat"><b>${inStock.length}</b><span>رول بالمخزون</span></div>
+      <div class="stat"><b>${totalWeight.toFixed(1)}</b><span>إجمالي الوزن (كجم)</span></div>
+      <div class="stat"><b>${new Set(inStock.map((roll) => roll.subtype)).size}</b><span>عدد الأصناف</span></div>
+    `;
+
+    const query = els.searchBox.value.trim().toLowerCase();
+    const category = els.filterCategory.value;
+    const subtype = els.filterSubtype.value;
+    let list = inStock;
+    if (category) list = list.filter((roll) => roll.category === category);
+    if (subtype) list = list.filter((roll) => roll.subtype === subtype);
+    if (query) {
+      list = list.filter((roll) => [roll.subtype, roll.color, roll.origin]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)));
+    }
+
+    state.currentGroups = buildGroups(list).sort((a, b) => b.totalWeight - a.totalWeight);
+    if (!state.currentGroups.length) {
+      els.inventoryGrid.innerHTML = '<div class="empty">لا توجد رولات مطابقة في المخزون حاليًا.</div>';
+    } else {
+      els.inventoryGrid.innerHTML = state.currentGroups.map((group, index) => `
+        <article class="inventory-card ${group.category === 'other' ? 'other' : ''}">
+          <div class="subtype">${escapeHtml(group.subtype)}</div>
+          <div class="badges">
+            <span class="badge">📏 ${formatNumber(group.size)} سم</span>
+            ${group.color ? `<span class="badge orange">🎨 ${escapeHtml(group.color)}</span>` : ''}
+            ${group.grammage ? `<span class="badge">🧾 جراماج ${formatNumber(group.grammage)}</span>` : ''}
+            ${group.origin ? `<span class="badge">🌍 ${escapeHtml(group.origin)}</span>` : ''}
+          </div>
+          <div class="rolls-list">${group.rolls.map((roll) => `<span class="chip">${Number(roll.weight).toFixed(1)} كجم</span>`).join('')}</div>
+          <div class="totals">
+            <div>عدد الرولات<b>${group.rolls.length}</b></div>
+            <div>الوزن الإجمالي<b>${group.totalWeight.toFixed(1)} كجم</b></div>
+          </div>
+          <div class="actions"><button type="button" class="btn btn-orange" data-exit-index="${index}">📤 إخراج بالوزن</button></div>
+        </article>
+      `).join('');
+      els.inventoryGrid.querySelectorAll('[data-exit-index]').forEach((button) => {
+        button.addEventListener('click', () => openExitModal(Number(button.dataset.exitIndex)));
+      });
+    }
+
+    renderInventorySummary(inStock);
+  }
+
+  function buildGroups(list) {
+    const map = new Map();
