@@ -1,0 +1,177 @@
+   showOnly('authScreen');
+        showAuthMode('login');
+        return;
+      }
+
+      state.user = session.user;
+      const profile = await fetchProfileWithRetry(session.user.id);
+      if (!profile) {
+        await state.client.auth.signOut();
+        showOnly('authScreen');
+        els.loginError.textContent = 'تعذر قراءة ملف المستخدم. تأكد من تنفيذ ملف قاعدة البيانات.';
+        return;
+      }
+      state.profile = profile;
+      await subscribeToOwnProfile();
+      await applyProfileState();
+    } finally {
+      state.handlingSession = false;
+    }
+  }
+
+  async function fetchProfileWithRetry(userId, attempts = 5) {
+    for (let i = 0; i < attempts; i += 1) {
+      const { data, error } = await state.client
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (data) return data;
+      if (error && !String(error.message || '').includes('0 rows')) {
+        console.error('Profile load error:', error);
+      }
+      await delay(250 * (i + 1));
+    }
+    return null;
+  }
+
+  async function applyProfileState() {
+    if (!state.profile) return;
+
+    if (state.profile.status === 'approved') {
+      showOnly('appScreen');
+      updateUserHeader();
+      const isAdmin = state.profile.role === 'admin';
+      els.adminTabButton.hidden = !isAdmin;
+      els.restoreBox.hidden = !isAdmin;
+      await loadData(true);
+      if (isAdmin) await loadUsers();
+      await subscribeToAppChanges();
+      return;
+    }
+
+    await stopAppRealtime();
+    showOnly('approvalScreen');
+    const rejected = state.profile.status === 'rejected';
+    els.approvalIcon.textContent = rejected ? '⛔' : '⏳';
+    els.approvalTitle.textContent = rejected ? 'تم رفض الحساب' : 'الحساب بانتظار موافقة الأدمن';
+    els.approvalMessage.textContent = rejected
+      ? 'لا يمكن لهذا الحساب دخول النظام. تواصل مع مدير النظام لإعادة مراجعته.'
+      : 'تم تسجيل حسابك، لكن لا يمكن فتح بيانات المخزون قبل اعتماد الحساب من مدير النظام.';
+    els.refreshApprovalBtn.hidden = rejected;
+  }
+
+  async function refreshApprovalStatus() {
+    if (!state.user) return;
+    setLoading(true);
+    try {
+      const profile = await fetchProfileWithRetry(state.user.id, 2);
+      if (profile) {
+        state.profile = profile;
+        await applyProfileState();
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logout() {
+    setLoading(true);
+    try {
+      await stopRealtime();
+      await state.client.auth.signOut();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateUserHeader() {
+    els.currentUsername.textContent = state.profile.username;
+    els.currentRole.textContent = state.profile.role === 'admin' ? 'أدمن' : 'مستخدم';
+    els.accountUsername.textContent = state.profile.username;
+    els.accountFullName.textContent = state.profile.full_name || '—';
+  }
+
+  function activateTab(tabName) {
+    if (tabName === 'admin' && state.profile?.role !== 'admin') return;
+    document.querySelectorAll('.tabs button[data-tab]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-panel').forEach((panel) => {
+      panel.hidden = panel.id !== `panel-${tabName}`;
+    });
+    if (tabName === 'inventory') renderInventory();
+    if (tabName === 'log') renderLog();
+    if (tabName === 'admin') loadUsers();
+  }
+
+  async function loadData(showLoader = false) {
+    if (!state.profile || state.profile.status !== 'approved') return;
+    if (showLoader) setLoading(true);
+    setSyncStatus('syncing');
+    try {
+      const [rollResult, transactionResult] = await Promise.all([
+        state.client.from('rolls').select('*').order('entry_date', { ascending: true }),
+        state.client.from('transactions').select('*').order('occurred_at', { ascending: false })
+      ]);
+      if (rollResult.error) throw rollResult.error;
+      if (transactionResult.error) throw transactionResult.error;
+
+      state.rolls = rollResult.data || [];
+      state.transactions = transactionResult.data || [];
+      renderAll();
+      setSyncStatus('online');
+    } catch (error) {
+      console.error('Load data error:', error);
+      setSyncStatus('offline');
+      showToast('تعذر مزامنة البيانات. تحقق من الاتصال والصلاحيات.');
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }
+
+  function scheduleDataReload() {
+    window.clearTimeout(state.reloadTimer);
+    state.reloadTimer = window.setTimeout(async () => {
+      await loadData(false);
+      if (state.profile?.role === 'admin') await loadUsers(false);
+    }, 220);
+  }
+
+  async function subscribeToAppChanges() {
+    await stopAppRealtime();
+    state.appChannel = state.client
+      .channel(`paper-mill-app-${state.user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rolls' }, scheduleDataReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, scheduleDataReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        if (state.profile?.role === 'admin') loadUsers(false);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setSyncStatus('online');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setSyncStatus('offline');
+      });
+  }
+
+  async function subscribeToOwnProfile() {
+    if (state.profileChannel) await state.client.removeChannel(state.profileChannel);
+    state.profileChannel = state.client
+      .channel(`own-profile-${state.user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${state.user.id}` },
+        async (payload) => {
+          state.profile = payload.new;
+          await applyProfileState();
+        }
+      )
+      .subscribe();
+  }
+
+  async function stopAppRealtime() {
+    if (state.appChannel && state.client) {
+      await state.client.removeChannel(state.appChannel);
+      state.appChannel = null;
+    }
+  
