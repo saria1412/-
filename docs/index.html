@@ -1,0 +1,14 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>جاري تحميل سجل المخزون…</title></head><body><p style="font-family:Arial;text-align:center;margin-top:20vh">جاري تحميل النظام…</p><script>
+(() => {
+  const files = ['page.part01.txt', 'page.part02.txt', 'page.part03.txt', 'page.part04.txt', 'page.part05.txt', 'page.part06.txt', 'page.part07.txt', 'page.part08.txt', 'page.part09.txt', 'page.part10.txt', 'page.part11.txt', 'page.part12.txt', 'page.part13.txt'];
+  let html = '';
+  for (const file of files) {
+    const request = new XMLHttpRequest();
+    request.open('GET', file, false);
+    request.send(null);
+    if (request.status < 200 || request.status >= 300) throw new Error('تعذر تحميل '+file);
+    html += request.responseText;
+  }
+  document.open(); document.write(html); document.close();
+})();
+</script></body></html>
