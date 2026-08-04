@@ -1,0 +1,118 @@
+item.amount || 0), 0);
+    const totalOut = list.filter((item) => item.type === 'out').reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    els.logResultCount.textContent = `${list.length} حركة مطابقة`;
+    els.logResultWeight.textContent = `الدخول: ${totalIn.toFixed(1)} كجم • الخروج: ${totalOut.toFixed(1)} كجم`;
+
+    if (!list.length) {
+      els.logBody.innerHTML = '<tr><td colspan="7">لا توجد حركات مطابقة لعوامل البحث.</td></tr>';
+      return;
+    }
+
+    const groups = new Map();
+    list.forEach((item) => {
+      const key = new Date(item.occurred_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' });
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    });
+
+    let html = '';
+    groups.forEach((rows, dayLabel) => {
+      const dayIn = rows.filter((item) => item.type === 'in').reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const dayOut = rows.filter((item) => item.type === 'out').reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      html += `<tr class="day-row"><td colspan="7">📅 ${escapeHtml(dayLabel)} <span class="day-total">— دخول ${dayIn.toFixed(1)} / خروج ${dayOut.toFixed(1)} كجم</span></td></tr>`;
+      rows.forEach((item) => {
+        const parsed = parseRollSummary(item.roll_summary);
+        const date = new Date(item.occurred_at);
+        html += `
+          <tr>
+            <td>${escapeHtml(date.toLocaleString('ar-SA', { hour: '2-digit', minute: '2-digit' }))}</td>
+            <td><span class="tag ${item.type === 'in' ? 'tag-in' : 'tag-out'}">${item.type === 'in' ? 'دخول' : 'خروج'}</span></td>
+            <td><b>${escapeHtml(parsed.subtype)}</b>${parsed.details ? `<div class="cell-sub">${escapeHtml(parsed.details)}</div>` : ''}</td>
+            <td class="${item.type === 'in' ? 'amount-in' : 'amount-out'}">${item.type === 'in' ? '+' : '−'}${Number(item.amount).toFixed(1)}</td>
+            <td>${escapeHtml(item.label || '—')}${parsed.tag ? `<div class="cell-sub">${escapeHtml(parsed.tag)}</div>` : ''}</td>
+            <td>${escapeHtml(item.notes || '—')}</td>
+            <td>${escapeHtml(item.created_by_username || '—')}</td>
+          </tr>`;
+      });
+    });
+    els.logBody.innerHTML = html;
+  }
+
+  function resetLogFilters() {
+    [
+      els.filterMoveType, els.filterLogSubtype, els.filterLogReason,
+      els.filterDateFrom, els.filterDateTo, els.filterWeightMin, els.filterWeightMax
+    ].forEach((control) => { control.value = ''; });
+    renderLog();
+  }
+
+  function extractSubtype(summary) {
+    return String(summary || '').split(' — ')[0];
+  }
+
+  function parseRollSummary(summary) {
+    const text = String(summary || '');
+    const tagMatch = text.match(/\s\(([^)]+)\)\s*$/);
+    const tag = tagMatch ? tagMatch[1] : '';
+    const main = tagMatch ? text.slice(0, tagMatch.index) : text;
+    const parts = main.split(' — ');
+    return { subtype: parts[0] || '', details: parts.slice(1).join(' • '), tag };
+  }
+
+  function exportRows() {
+    return state.currentLogList.map((item) => {
+      const parsed = parseRollSummary(item.roll_summary);
+      const date = new Date(item.occurred_at);
+      return {
+        'التاريخ': date.toLocaleDateString('ar-SA'),
+        'الوقت': date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+        'نوع الحركة': item.type === 'in' ? 'دخول' : 'خروج',
+        'الصنف': parsed.subtype,
+        'التفاصيل': parsed.details + (parsed.tag ? ` — ${parsed.tag}` : ''),
+        'الوزن (كجم)': Number(item.amount).toFixed(2),
+        'السبب / الطريقة': item.label || '',
+        'ملاحظات': item.notes || '',
+        'المستخدم': item.created_by_username || ''
+      };
+    });
+  }
+
+  function exportExcel() {
+    if (!state.currentLogList.length) {
+      showToast('لا توجد بيانات لتصديرها.');
+      return;
+    }
+    if (!window.XLSX) {
+      showToast('مكتبة Excel غير متاحة حاليًا.');
+      return;
+    }
+    const worksheet = window.XLSX.utils.json_to_sheet(exportRows());
+    worksheet['!cols'] = [{ wch: 13 }, { wch: 10 }, { wch: 11 }, { wch: 22 }, { wch: 38 }, { wch: 14 }, { wch: 22 }, { wch: 32 }, { wch: 18 }];
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, 'سجل الحركة');
+    window.XLSX.writeFile(workbook, `سجل-حركة-المخزون-${isoDate()}.xlsx`);
+    showToast('تم تصدير ملف Excel.');
+  }
+
+  function exportPdf() {
+    if (!state.currentLogList.length) {
+      showToast('لا توجد بيانات للطباعة.');
+      return;
+    }
+    const rows = exportRows();
+    const totalIn = state.currentLogList.filter((item) => item.type === 'in').reduce((sum, item) => sum + Number(item.amount), 0);
+    const totalOut = state.currentLogList.filter((item) => item.type === 'out').reduce((sum, item) => sum + Number(item.amount), 0);
+    const rowsHtml = rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row['التاريخ'])}</td><td>${escapeHtml(row['الوقت'])}</td><td>${escapeHtml(row['نوع الحركة'])}</td>
+        <td>${escapeHtml(row['الصنف'])}</td><td>${escapeHtml(row['التفاصيل'])}</td><td>${escapeHtml(row['الوزن (كجم)'])}</td>
+        <td>${escapeHtml(row['السبب / الطريقة'])}</td><td>${escapeHtml(row['ملاحظات'])}</td><td>${escapeHtml(row['المستخدم'])}</td>
+      </tr>`).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('اسمح بالنوافذ المنبثقة لإتمام الطباعة.');
+      return;
+    }
+    printWindow.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>سجل حركة المخزون</title>
+      <style>body{font-family:Tahoma,Arial,sans-serif;padding:18px;color:#1c2b3a}h1{font-size:19px;color:#173a63;margin-bottom:4px}.sub{font-size:11px;color:#66788c;margin-bottom:14px}table{border-collapse:collapse;width:100%;font-size:10.5px}th,td{border:1px solid #dce4ec;padding:6px;text-align:right}th{background:#e8eef5;color:#173a63}.totals{margin-top:12px;font-weight:bold;color:#173a63}@media print{@page{size:A4 landscape;margin:10mm}}</style>
