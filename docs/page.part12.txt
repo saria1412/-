@@ -1,0 +1,135 @@
+>
+      </head><body><h1>سجل حركة مخزون الخام — مصنع إبداعات دوما</h1><div class="sub">تاريخ التصدير: ${escapeHtml(new Date().toLocaleString('ar-SA'))} — عدد الحركات: ${rows.length}</div>
+      <table><thead><tr><th>التاريخ</th><th>الوقت</th><th>الحركة</th><th>الصنف</th><th>التفاصيل</th><th>الوزن</th><th>السبب</th><th>ملاحظات</th><th>المستخدم</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      <div class="totals">إجمالي الدخول: ${totalIn.toFixed(1)} كجم — إجمالي الخروج: ${totalOut.toFixed(1)} كجم</div>
+      <script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);
+    printWindow.document.close();
+  }
+
+  function exportBackup() {
+    const payload = {
+      format: 'paper-mill-cloud-backup',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      exported_by: state.profile?.username || null,
+      rolls: state.rolls,
+      transactions: state.transactions
+    };
+    downloadBlob(JSON.stringify(payload, null, 2), 'application/json', `نسخة-احتياطية-مخزون-الورق-${isoDate()}.json`);
+    showToast('تم تنزيل النسخة الاحتياطية.');
+  }
+
+  async function restoreBackup() {
+    if (state.profile?.role !== 'admin') return;
+    const file = els.backupFile.files[0];
+    if (!file) {
+      showToast('اختر ملف JSON أولًا.');
+      return;
+    }
+    if (!window.confirm('سيتم استبدال جميع بيانات المخزون وسجل الحركة لدى كل المستخدمين. هل أنت متأكد؟')) return;
+
+    els.restoreBackupBtn.disabled = true;
+    setLoading(true);
+    try {
+      const payload = JSON.parse(await file.text());
+      if (!Array.isArray(payload.rolls) || !Array.isArray(payload.transactions)) {
+        throw new Error('ملف النسخة الاحتياطية غير مكتمل.');
+      }
+      const { error } = await state.client.rpc('restore_backup', { p_payload: payload });
+      if (error) throw error;
+      els.backupFile.value = '';
+      await loadData(false);
+      showToast('تمت استعادة النسخة الاحتياطية ومزامنتها مع الجميع.');
+    } catch (error) {
+      console.error('Restore backup error:', error);
+      showToast(cleanDbError(error));
+    } finally {
+      els.restoreBackupBtn.disabled = false;
+      setLoading(false);
+    }
+  }
+
+  async function loadUsers(showLoader = false) {
+    if (state.profile?.role !== 'admin') return;
+    if (showLoader) setLoading(true);
+    try {
+      const { data, error } = await state.client.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      state.users = data || [];
+      renderUsers();
+    } catch (error) {
+      console.error('Load users error:', error);
+      showToast('تعذر تحميل قائمة المستخدمين.');
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }
+
+  function renderUsers() {
+    const pending = state.users.filter((user) => user.status === 'pending').length;
+    const approved = state.users.filter((user) => user.status === 'approved').length;
+    const rejected = state.users.filter((user) => user.status === 'rejected').length;
+    els.adminSummary.innerHTML = `
+      <div class="admin-card"><b>${pending}</b><span>طلبات معلّقة</span></div>
+      <div class="admin-card"><b>${approved}</b><span>حسابات معتمدة</span></div>
+      <div class="admin-card"><b>${rejected}</b><span>حسابات مرفوضة</span></div>`;
+
+    if (!state.users.length) {
+      els.usersBody.innerHTML = '<tr><td colspan="6">لا توجد حسابات.</td></tr>';
+      return;
+    }
+
+    els.usersBody.innerHTML = state.users.map((user) => {
+      const isSelf = user.id === state.user.id;
+      const statusLabel = user.status === 'approved' ? 'معتمد' : user.status === 'pending' ? 'معلّق' : 'مرفوض';
+      const statusClass = `status-${user.status}`;
+      const roleLabel = user.role === 'admin' ? 'أدمن' : 'مستخدم';
+      let actions = '<span class="cell-sub">الحساب الحالي</span>';
+      if (!isSelf) {
+        actions = '<div class="user-actions">';
+        if (user.status !== 'approved') actions += `<button class="btn btn-green btn-sm" data-user-action="approve" data-user-id="${user.id}">موافقة</button>`;
+        if (user.status !== 'rejected') actions += `<button class="btn btn-red btn-sm" data-user-action="reject" data-user-id="${user.id}">رفض</button>`;
+        if (user.status === 'approved') {
+          actions += user.role === 'admin'
+            ? `<button class="btn btn-neutral btn-sm" data-user-action="make-user" data-user-id="${user.id}">إزالة الأدمن</button>`
+            : `<button class="btn btn-neutral btn-sm" data-user-action="make-admin" data-user-id="${user.id}">جعله أدمن</button>`;
+        }
+        actions += '</div>';
+      }
+      return `<tr>
+        <td dir="ltr">${escapeHtml(user.username)}</td>
+        <td>${escapeHtml(user.full_name || '—')}</td>
+        <td><span class="tag ${statusClass}">${statusLabel}</span></td>
+        <td>${roleLabel}</td>
+        <td>${escapeHtml(new Date(user.created_at).toLocaleDateString('ar-SA'))}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('');
+
+    els.usersBody.querySelectorAll('[data-user-action]').forEach((button) => {
+      button.addEventListener('click', () => updateUserAccess(button.dataset.userId, button.dataset.userAction, button));
+    });
+  }
+
+  async function updateUserAccess(userId, action, button) {
+    if (state.profile?.role !== 'admin') return;
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) return;
+
+    let status = user.status;
+    let role = user.role;
+    if (action === 'approve') status = 'approved';
+    if (action === 'reject') status = 'rejected';
+    if (action === 'make-admin') { status = 'approved'; role = 'admin'; }
+    if (action === 'make-user') role = 'user';
+
+    const promptText = action === 'reject'
+      ? `رفض حساب ${user.username} ومنعه من النظام؟`
+      : action === 'make-admin'
+        ? `منح ${user.username} صلاحيات الأدمن الكاملة؟`
+        : 'تأكيد تنفيذ الإجراء؟';
+    if (!window.confirm(promptText)) return;
+
+    button.disabled = true;
+    try {
+      const { error } = await state.client.rpc('set_user_ac
