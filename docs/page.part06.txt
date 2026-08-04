@@ -1,0 +1,146 @@
+null,
+    profileChannel: null,
+    reloadTimer: null,
+    deferredInstallPrompt: null,
+    loadingCount: 0,
+    handlingSession: false
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  function cacheElements() {
+    [
+      'setupScreen', 'authScreen', 'approvalScreen', 'appScreen',
+      'showLoginBtn', 'showRegisterBtn', 'loginForm', 'registerForm',
+      'loginUsername', 'loginPassword', 'loginError',
+      'registerFullName', 'registerUsername', 'registerPassword', 'registerPasswordConfirm', 'registerBootstrapCode', 'bootstrapCodeField', 'registerError',
+      'approvalIcon', 'approvalTitle', 'approvalMessage', 'refreshApprovalBtn', 'pendingLogoutBtn',
+      'syncPill', 'syncText', 'installBtn', 'accountBtn', 'logoutBtn',
+      'currentUsername', 'currentRole', 'adminTabButton', 'restoreBox',
+      'statsRow', 'searchBox', 'filterCategory', 'filterSubtype', 'inventoryGrid',
+      'summaryBody', 'sumTotalCount', 'sumTotalWeight',
+      'categoryToggle', 'catPaperLabel', 'catOtherLabel', 'addForm', 'subtype', 'rollSize', 'rollWeight',
+      'colorField', 'grammageField', 'rollColor', 'rollGrammage', 'rollOrigin', 'entryMethod', 'entryNotes',
+      'filterMoveType', 'filterLogSubtype', 'filterLogReason', 'filterDateFrom', 'filterDateTo',
+      'filterWeightMin', 'filterWeightMax', 'resetLogFiltersBtn', 'logResultCount', 'logResultWeight',
+      'logBody', 'exportExcelBtn', 'exportPdfBtn', 'exportBackupBtn', 'backupFile', 'restoreBackupBtn',
+      'adminSummary', 'usersBody',
+      'exitModal', 'exitGroupSummary', 'exitWeight', 'exitWeightHint', 'exitReason', 'exitNotes',
+      'cancelExitBtn', 'confirmExitBtn',
+      'accountModal', 'accountUsername', 'accountFullName', 'changePasswordForm', 'newPassword',
+      'newPasswordConfirm', 'passwordError', 'closeAccountBtn',
+      'loadingOverlay', 'toast'
+    ].forEach((id) => { els[id] = $(id); });
+  }
+
+  async function init() {
+    cacheElements();
+    bindStaticEvents();
+    refreshSubtypeOptions('paper');
+    populateInventorySubtypeFilter();
+    updateConnectivity();
+    registerServiceWorker();
+
+    if (!isConfigReady() || !window.supabase?.createClient) {
+      showOnly('setupScreen');
+      return;
+    }
+
+    state.client = window.supabase.createClient(
+      window.APP_CONFIG.SUPABASE_URL,
+      window.APP_CONFIG.SUPABASE_PUBLISHABLE_KEY,
+      {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      }
+    );
+
+    state.client.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => handleSession(session), 0);
+    });
+
+    const { data, error } = await state.client.auth.getSession();
+    if (error) {
+      showToast('تعذر فحص جلسة الدخول. تحقق من الاتصال.');
+      showOnly('authScreen');
+      return;
+    }
+    await handleSession(data.session);
+  }
+
+  function isConfigReady() {
+    const cfg = window.APP_CONFIG || {};
+    return Boolean(
+      cfg.SUPABASE_URL &&
+      cfg.SUPABASE_PUBLISHABLE_KEY &&
+      !cfg.SUPABASE_URL.includes('YOUR_PROJECT') &&
+      !cfg.SUPABASE_PUBLISHABLE_KEY.includes('YOUR_SUPABASE')
+    );
+  }
+
+  function bindStaticEvents() {
+    els.showLoginBtn.addEventListener('click', () => showAuthMode('login'));
+    els.showRegisterBtn.addEventListener('click', () => showAuthMode('register'));
+    els.loginForm.addEventListener('submit', login);
+    els.registerForm.addEventListener('submit', register);
+    els.registerUsername.addEventListener('input', updateBootstrapField);
+    els.refreshApprovalBtn.addEventListener('click', refreshApprovalStatus);
+    els.pendingLogoutBtn.addEventListener('click', logout);
+    els.logoutBtn.addEventListener('click', logout);
+
+    document.querySelectorAll('.tabs button[data-tab]').forEach((button) => {
+      button.addEventListener('click', () => activateTab(button.dataset.tab));
+    });
+
+    document.querySelectorAll('input[name="category"]').forEach((radio) => {
+      radio.addEventListener('change', () => refreshSubtypeOptions(radio.value));
+    });
+
+    els.filterCategory.addEventListener('change', () => {
+      populateInventorySubtypeFilter();
+      renderInventory();
+    });
+    els.filterSubtype.addEventListener('change', renderInventory);
+    els.searchBox.addEventListener('input', renderInventory);
+    els.addForm.addEventListener('submit', addRoll);
+
+    [
+      els.filterMoveType, els.filterLogSubtype, els.filterLogReason, els.filterDateFrom,
+      els.filterDateTo, els.filterWeightMin, els.filterWeightMax
+    ].forEach((control) => {
+      control.addEventListener('input', renderLog);
+      control.addEventListener('change', renderLog);
+    });
+
+    els.resetLogFiltersBtn.addEventListener('click', resetLogFilters);
+    els.exportExcelBtn.addEventListener('click', exportExcel);
+    els.exportPdfBtn.addEventListener('click', exportPdf);
+    els.exportBackupBtn.addEventListener('click', exportBackup);
+    els.restoreBackupBtn.addEventListener('click', restoreBackup);
+
+    els.cancelExitBtn.addEventListener('click', closeExitModal);
+    els.confirmExitBtn.addEventListener('click', confirmExit);
+    els.exitModal.addEventListener('click', (event) => {
+      if (event.target === els.exitModal) closeExitModal();
+    });
+
+    els.accountBtn.addEventListener('click', openAccountModal);
+    els.closeAccountBtn.addEventListener('click', closeAccountModal);
+    els.accountModal.addEventListener('click', (event) => {
+      if (event.target === els.accountModal) closeAccountModal();
+    });
+    els.changePasswordForm.addEventListener('submit', changePassword);
+
+    window.addEventListener('online', updateConnectivity);
+    window.addEventListener('offline', updateConnectivity);
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      state.deferredInstallPrompt = event;
+      els.installBtn.hidden = false;
+    });
+    els.installBtn.addEventListener('click', installPwa);
+    window.addEventListener('appinstalled', () => {
+  
