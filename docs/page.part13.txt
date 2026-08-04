@@ -1,0 +1,145 @@
+cess', {
+        p_user_id: userId,
+        p_status: status,
+        p_role: role
+      });
+      if (error) throw error;
+      await loadUsers(false);
+      showToast('تم تحديث صلاحية المستخدم فورًا.');
+    } catch (error) {
+      console.error('Update user access error:', error);
+      showToast(cleanDbError(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function openAccountModal() {
+    updateUserHeader();
+    els.newPassword.value = '';
+    els.newPasswordConfirm.value = '';
+    els.passwordError.textContent = '';
+    els.accountModal.classList.add('show');
+  }
+
+  function closeAccountModal() {
+    els.accountModal.classList.remove('show');
+  }
+
+  async function changePassword(event) {
+    event.preventDefault();
+    els.passwordError.textContent = '';
+    const password = els.newPassword.value;
+    const confirmation = els.newPasswordConfirm.value;
+    if (password.length < 8) {
+      els.passwordError.textContent = 'كلمة السر يجب ألا تقل عن 8 خانات.';
+      return;
+    }
+    if (password !== confirmation) {
+      els.passwordError.textContent = 'كلمتا السر غير متطابقتين.';
+      return;
+    }
+
+    const submit = els.changePasswordForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      const { error } = await state.client.auth.updateUser({ password });
+      if (error) throw error;
+      closeAccountModal();
+      showToast('تم تغيير كلمة السر بنجاح.');
+    } catch (error) {
+      els.passwordError.textContent = translateAuthError(error);
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function installPwa() {
+    if (!state.deferredInstallPrompt) {
+      showToast('افتح قائمة المتصفح واختر «إضافة إلى الشاشة الرئيسية».');
+      return;
+    }
+    state.deferredInstallPrompt.prompt();
+    await state.deferredInstallPrompt.userChoice;
+    state.deferredInstallPrompt = null;
+    els.installBtn.hidden = true;
+  }
+
+  function registerServiceWorker() {
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch((error) => console.warn('SW registration failed', error));
+      });
+    }
+  }
+
+  function setLoading(show) {
+    state.loadingCount += show ? 1 : -1;
+    state.loadingCount = Math.max(0, state.loadingCount);
+    els.loadingOverlay.classList.toggle('show', state.loadingCount > 0);
+  }
+
+  let toastTimer;
+  function showToast(message) {
+    window.clearTimeout(toastTimer);
+    els.toast.textContent = message;
+    els.toast.classList.add('show');
+    toastTimer = window.setTimeout(() => els.toast.classList.remove('show'), 3200);
+  }
+
+  function cleanDbError(error) {
+    const message = String(error?.message || error || 'حدث خطأ غير متوقع.');
+    const lower = message.toLowerCase();
+    if (lower.includes('not approved')) return 'الحساب غير معتمد أو تم إيقافه.';
+    if (lower.includes('insufficient stock')) return 'الكمية لم تعد متاحة؛ ربما تم تعديلها من جهاز آخر. تم تحديث البيانات.';
+    if (lower.includes('admin only')) return 'هذه العملية متاحة للأدمن فقط.';
+    if (lower.includes('duplicate') || lower.includes('unique')) return 'اسم المستخدم موجود مسبقًا.';
+    return message.replace(/^.*?: /, '');
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = String(value ?? '');
+    return div.innerHTML;
+  }
+
+  function emptyToNull(value) {
+    const text = String(value || '').trim();
+    return text || null;
+  }
+
+  function numberOrNull(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function formatNumber(value) {
+    const number = Number(value);
+    return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  }
+
+  function isoDate() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function downloadBlob(content, type, filename) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+})();
+
+  </script>
+</body>
+</html>
