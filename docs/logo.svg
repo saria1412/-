@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="شعار مخزون الورق">
+  <rect width="512" height="512" rx="112" fill="#173a63"/>
+  <path d="M126 118h218c23 0 42 19 42 42v192c0 23-19 42-42 42H126V118Z" fill="#fff" opacity=".97"/>
+  <path d="M126 118c-27 0-49 22-49 49v178c0 27 22 49 49 49h14V118h-14Z" fill="#f59e0b"/>
+  <path d="M188 184h142M188 242h142M188 300h102" stroke="#173a63" stroke-width="24" stroke-linecap="round"/>
+</svg>
