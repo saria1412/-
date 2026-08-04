@@ -1,0 +1,164 @@
+    state.deferredInstallPrompt = null;
+      els.installBtn.hidden = true;
+      showToast('تم تثبيت التطبيق على الجهاز.');
+    });
+  }
+
+  function showOnly(screenId) {
+    ['setupScreen', 'authScreen', 'approvalScreen', 'appScreen'].forEach((id) => {
+      els[id].hidden = id !== screenId;
+    });
+  }
+
+  function showAuthMode(mode) {
+    const loginMode = mode === 'login';
+    els.loginForm.hidden = !loginMode;
+    els.registerForm.hidden = loginMode;
+    els.showLoginBtn.classList.toggle('active', loginMode);
+    els.showRegisterBtn.classList.toggle('active', !loginMode);
+    els.loginError.textContent = '';
+    els.registerError.textContent = '';
+  }
+
+  function normalizeUsername(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function usernameIsValid(username) {
+    return /^[a-z0-9._-]{3,30}$/.test(username);
+  }
+
+  function usernameToEmail(username) {
+    const domain = window.APP_CONFIG.INTERNAL_EMAIL_DOMAIN || 'paper-mill.example.com';
+    return `${normalizeUsername(username)}@${domain}`;
+  }
+
+  function updateBootstrapField() {
+    const bootstrapUsername = normalizeUsername(window.APP_CONFIG.BOOTSTRAP_ADMIN_USERNAME || 'moazkhoulani');
+    const isBootstrapAdmin = normalizeUsername(els.registerUsername.value) === bootstrapUsername;
+    els.bootstrapCodeField.hidden = !isBootstrapAdmin;
+    els.registerBootstrapCode.required = isBootstrapAdmin;
+    if (!isBootstrapAdmin) els.registerBootstrapCode.value = '';
+  }
+
+  async function login(event) {
+    event.preventDefault();
+    els.loginError.textContent = '';
+    const username = normalizeUsername(els.loginUsername.value);
+    const password = els.loginPassword.value;
+
+    if (!usernameIsValid(username)) {
+      els.loginError.textContent = 'اسم المستخدم غير صحيح.';
+      return;
+    }
+
+    const button = els.loginForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'جاري الدخول...';
+    try {
+      const { error } = await state.client.auth.signInWithPassword({
+        email: usernameToEmail(username),
+        password
+      });
+      if (error) throw error;
+    } catch (error) {
+      els.loginError.textContent = translateAuthError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'دخول';
+    }
+  }
+
+  async function register(event) {
+    event.preventDefault();
+    els.registerError.textContent = '';
+
+    const fullName = els.registerFullName.value.trim();
+    const username = normalizeUsername(els.registerUsername.value);
+    const password = els.registerPassword.value;
+    const confirmPassword = els.registerPasswordConfirm.value;
+    const bootstrapUsername = normalizeUsername(window.APP_CONFIG.BOOTSTRAP_ADMIN_USERNAME || 'moazkhoulani');
+    const isBootstrapAdmin = username === bootstrapUsername;
+    const bootstrapCode = els.registerBootstrapCode.value.trim();
+
+    if (!fullName) {
+      els.registerError.textContent = 'أدخل الاسم الكامل.';
+      return;
+    }
+    if (!usernameIsValid(username)) {
+      els.registerError.textContent = 'اسم المستخدم يجب أن يتكون من أحرف إنجليزية وأرقام، من 3 إلى 30 خانة.';
+      return;
+    }
+    if (password.length < 8) {
+      els.registerError.textContent = 'كلمة السر يجب ألا تقل عن 8 خانات.';
+      return;
+    }
+    if (password !== confirmPassword) {
+      els.registerError.textContent = 'كلمتا السر غير متطابقتين.';
+      return;
+    }
+    if (isBootstrapAdmin && !bootstrapCode) {
+      els.registerError.textContent = 'أدخل رمز تهيئة الأدمن الأول الموجود في الملف الخاص بالمدير.';
+      return;
+    }
+
+    const button = els.registerForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'جاري إرسال الطلب...';
+    try {
+      const { data, error } = await state.client.auth.signUp({
+        email: usernameToEmail(username),
+        password,
+        options: {
+          data: {
+            username,
+            full_name: fullName,
+            bootstrap_code: isBootstrapAdmin ? bootstrapCode : null
+          }
+        }
+      });
+      if (error) throw error;
+
+      els.registerForm.reset();
+      updateBootstrapField();
+      if (data.session) {
+        await handleSession(data.session);
+      } else {
+        showAuthMode('login');
+        els.loginUsername.value = username;
+        els.loginError.style.color = 'var(--green)';
+        els.loginError.textContent = 'تم إرسال طلب الحساب. بعد موافقة الأدمن سجّل الدخول.';
+        window.setTimeout(() => { els.loginError.style.color = ''; }, 5000);
+      }
+    } catch (error) {
+      const rawMessage = String(error?.message || '').toLowerCase();
+      if (isBootstrapAdmin && (rawMessage.includes('database error') || rawMessage.includes('invalid_bootstrap_code'))) {
+        els.registerError.textContent = 'تعذر إنشاء الأدمن. تحقق من رمز التهيئة ومن تنفيذ ملف schema.sql كاملًا.';
+      } else {
+        els.registerError.textContent = translateAuthError(error);
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = 'إرسال طلب الحساب';
+    }
+  }
+
+  function translateAuthError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('invalid login credentials')) return 'اسم المستخدم أو كلمة السر غير صحيحة.';
+    if (message.includes('user already registered') || message.includes('already been registered')) return 'اسم المستخدم مستخدم مسبقًا.';
+    if (message.includes('password should be at least')) return 'كلمة السر أقصر من الحد المسموح.';
+    if (message.includes('rate limit')) return 'تمت محاولات كثيرة. أعد المحاولة بعد قليل.';
+    if (message.includes('email') && message.includes('invalid')) return 'تعذر إنشاء الحساب بسبب إعدادات المصادقة.';
+    return error?.message || 'حدث خطأ غير متوقع.';
+  }
+
+  async function handleSession(session) {
+    if (state.handlingSession) return;
+    state.handlingSession = true;
+    try {
+      if (!session?.user) {
+        await stopRealtime();
+        state.user = null;
+        state.profile = null;
+      
