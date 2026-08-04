@@ -1,0 +1,15 @@
+{
+  "name": "سجل مخزون خام الورق - مصنع إبداعات دوما",
+  "short_name": "مخزون الورق",
+  "description": "إدارة مخزون خام الورق ومزامنة حركة الدخول والخروج بين الجوال والكمبيوتر.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7fa",
+  "theme_color": "#173a63",
+  "icons": [
+    {"src": "logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
