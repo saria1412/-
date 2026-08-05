@@ -1,0 +1,83 @@
+name: Build Paint Engineer Android APK
+
+on:
+  push:
+    branches:
+      - 'paint-engineer-android-*'
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Restore and verify Android source
+        run: |
+          cat paint-engineer/source.part.* | tr -d '\n\r' | base64 --decode > PaintEngineerAndroid-v0.2-source.zip
+          echo '177ee6eb9c77ff5d89c488f2e6a6cbbaed02b8a42de9c9d8cf13fc1edee090f5  PaintEngineerAndroid-v0.2-source.zip' | sha256sum --check
+          unzip -q PaintEngineerAndroid-v0.2-source.zip
+          test -f PaintEngineerAndroid/app/src/main/java/com/hbc/paintengineer/MainActivity.java
+          test -f PaintEngineerAndroid/app/src/main/assets/index.html
+          test -f PaintEngineerAndroid/app/src/main/assets/data.js
+
+      - name: Run source checks
+        run: |
+          grep -F 'com.hbc.paintengineer' PaintEngineerAndroid/app/build.gradle
+          grep -F 'AndroidBridge' PaintEngineerAndroid/app/src/main/java/com/hbc/paintengineer/MainActivity.java
+          grep -F 'window.AndroidBridge.share' PaintEngineerAndroid/app/src/main/assets/app.js
+          grep -F 'window.AndroidBridge.printPage' PaintEngineerAndroid/app/src/main/assets/app.js
+
+      - name: Build debug APK
+        working-directory: PaintEngineerAndroid
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Verify APK and prepare deliverables
+        run: |
+          APK='PaintEngineerAndroid/app/build/outputs/apk/debug/app-debug.apk'
+          test -f "$APK"
+          unzip -t "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee PaintEngineer-apk-info.txt
+          grep -F "package: name='com.hbc.paintengineer.debug'" PaintEngineer-apk-info.txt
+          cp "$APK" PaintEngineer-v0.2-debug.apk
+          sha256sum PaintEngineer-v0.2-debug.apk > PaintEngineer-v0.2-debug.apk.sha256
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: PaintEngineer-v02-APK
+          path: |
+            PaintEngineer-v0.2-debug.apk
+            PaintEngineer-v0.2-debug.apk.sha256
+            PaintEngineer-apk-info.txt
+            PaintEngineerAndroid-v0.2-source.zip
+          if-no-files-found: error
+          retention-days: 7
