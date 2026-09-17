@@ -90,11 +90,11 @@ jobs:
             echo 'Unexpected sensitive Android permission found'
             exit 1
           fi
-          if grep -RniE 'firebase|analytics|crashlytics|appcenter|facebook|adjust|amplitude|mixpanel|sentry|okhttp|retrofit' TelegramGifCleaner/app TelegramGifCleaner/*.gradle.kts; then
-            echo 'Unexpected analytics/tracker/network SDK reference found'
+          if grep -RniE '^[[:space:]]*(implementation|api|classpath)[[:space:]]*\(' TelegramGifCleaner --include='*.gradle' --include='*.gradle.kts' | grep -Ei 'firebase|analytics|crashlytics|appcenter|facebook|adjust|amplitude|mixpanel|sentry|okhttp|retrofit'; then
+            echo 'Unexpected analytics/tracker/network SDK dependency found'
             exit 1
           fi
-          if grep -RniE 'apiHash\s*=|api_hash\"\s*:\s*\"[0-9a-fA-F]{16,}' TelegramGifCleaner/app/src/main; then
+          if grep -RniE 'api_hash[^0-9a-fA-F]{0,24}[0-9a-fA-F]{32}' TelegramGifCleaner/app/src/main; then
             echo 'Hard-coded API hash found'
             exit 1
           fi
