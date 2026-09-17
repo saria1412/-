@@ -36,8 +36,10 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y gperf php-cli ninja-build cmake perl wget unzip
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;23.2.8568313' 'cmake;3.22.1'
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0' 'ndk;23.2.8568313' 'cmake;3.22.1'
           test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
           test -d "$ANDROID_SDK_ROOT/ndk/23.2.8568313"
 
