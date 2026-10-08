@@ -1,150 +1,81 @@
-name: HONOR HnThemeEditor Windows VM probe
+name: HONOR Theme Editor Real Import Probe
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
     paths: ['.github/workflows/honor-vm-editor-probe.yml']
-  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  editor-probe:
+  import-probe:
     runs-on: windows-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - name: Environment diagnostic
+      - name: Retrieve design assets privately
+        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force report | Out-Null
-          "OS: $([System.Environment]::OSVersion.VersionString)" | Out-File report/environment.txt
-          "PowerShell: $($PSVersionTable.PSVersion)" | Add-Content report/environment.txt
-          "Screen interactive: $([Environment]::UserInteractive)" | Add-Content report/environment.txt
-      - name: Install browser automation dependencies
+          New-Item -ItemType Directory -Force report,assets | Out-Null
+          $ErrorActionPreference='Stop'
+          Invoke-WebRequest -Uri 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-f5ac-8210-942e-6f1edf08e368/raw?se=2026-10-08T23%3A53%3A55Z&sp=r&sv=2026-02-06&sr=b&scid=32164b39-88c8-525b-9234-ff442c919289&skoid=002823aa-689d-47ca-9347-108c20f4f00d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T22%3A55%3A40Z&ske=2026-10-09T22%3A55%3A40Z&sks=b&skv=2026-02-06&sig=jVMHfmMKCHAmnMJGP2LE22Mq8bwaU3/hqwcD9k9Odp4%3D' -OutFile assets.zip -TimeoutSec 120
+          Expand-Archive -LiteralPath assets.zip -DestinationPath assets -Force
+          "Asset bytes: $((Get-Item assets.zip).Length)" | Out-File report/asset_status.txt
+          Get-ChildItem assets -Recurse -File | Select-Object -ExpandProperty FullName | Out-File report/asset_inventory.txt
+          if(-not (Test-Path 'assets/06_Import_Seed_Optional/Old_Beta_NotForPhone.hnt')){ throw 'Expected seed theme is absent' }
+      - name: Install official editor
+        shell: pwsh
         run: |
-          npm install --no-save playwright@1.55.1 | Out-File report/npm-output.txt
-          npx playwright install chromium | Out-File report/playwright-output.txt
-      - name: Inspect official HONOR editor site
+          $ErrorActionPreference='Stop'
+          Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile 'HnThemeEditor.exe' -TimeoutSec 600
+          "Official installer bytes $((Get-Item HnThemeEditor.exe).Length)" | Out-File report/editor_status.txt
+          $p=Start-Process -FilePath "$pwd/HnThemeEditor.exe" -ArgumentList '/S' -PassThru -Wait
+          "Installer return $($p.ExitCode)" | Add-Content report/editor_status.txt
+          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor executable not found'}
+      - name: Open editor and inspect Import dialogs
+        shell: pwsh
         run: |
-          @'
-          const { chromium } = require('playwright');
-          const fs = require('fs');
-          (async () => {
-            const browser = await chromium.launch({headless:true});
-            const page = await browser.newPage({viewport:{width:1366,height:950},acceptDownloads:true,locale:'zh-CN'});
-            page.on('console',m=> {if(m.type()==='error') fs.appendFileSync('report/console-errors.txt',m.text()+'\n')});
-            page.on('response',r=> {if(r.url().includes('honor') && r.status()>=400)fs.appendFileSync('report/http-errors.txt',r.status()+' '+r.url()+'\n')});
-            try {
-              await page.goto('https://developer.honor.com/cn/kitdoc/content/11106/guides/themetool.md',{waitUntil:'domcontentloaded',timeout:60000});
-              await page.waitForTimeout(14000);
-              await page.screenshot({path:'report/official_page.png',fullPage:false});
-              fs.writeFileSync('report/final_url.txt',page.url());
-              fs.writeFileSync('report/body_text.txt',(await page.locator('body').innerText()).slice(0,45000));
-              const links=await page.locator('a').evaluateAll(nodes=>nodes.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,150),href:n.href,download:n.download})).filter(x=>x.text||x.href));
-              fs.writeFileSync('report/links.json',JSON.stringify(links,null,2));
-              const buttons=await page.locator('button').evaluateAll(nodes=>nodes.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,150),outerHTML:n.outerHTML.slice(0,500)})));
-              fs.writeFileSync('report/buttons.json',JSON.stringify(buttons,null,2));
-              const cands=page.getByText('Windows版本',{exact:false});
-              fs.writeFileSync('report/candidate_count.txt',String(await cands.count()));
-              if((await cands.count())>0){
-                const parent=cands.first().locator('xpath=..');
-                fs.writeFileSync('report/candidate_html.txt',(await parent.evaluate(n=>n.outerHTML)).slice(0,5000));
-                const a=parent.locator('a').first();
-                if((await a.count())>0){
-                  let candidateUrl=await a.getAttribute('href');
-                  fs.writeFileSync('report/candidate_href.txt',String(candidateUrl));
-                  if(candidateUrl && /^https?:/.test(candidateUrl) && /honor|hihonor/.test(new URL(candidateUrl).hostname)){
-                    fs.writeFileSync('report/official_candidate_url.txt',candidateUrl);
-                  }
-                }
-              }
-              fs.writeFileSync('report/success.txt','Official page inspected with browser');
-            }catch(e){fs.writeFileSync('report/probe_error.txt',String(e.stack||e));process.exitCode=1;}
-            finally{await browser.close();}
-          })();
-          '@ | Set-Content -Encoding UTF8 probe.js
-          node probe.js
-      - name: Inspect HONOR download page
-        run: |
-          @'
-          const {chromium}=require('playwright'),fs=require('fs');
-          (async()=>{
-            const browser=await chromium.launch({headless:true});
-            const page=await browser.newPage({viewport:{width:1366,height:950},acceptDownloads:true,locale:'zh-CN'});
-            try{
-              await page.goto('https://developer.honor.com/cn/docs/11106/guides/download',{waitUntil:'domcontentloaded',timeout:60000});
-              await page.waitForTimeout(16000);
-              fs.writeFileSync('report/download_page_url.txt',page.url());
-              fs.writeFileSync('report/download_page_text.txt',(await page.locator('body').innerText()).slice(0,50000));
-              fs.writeFileSync('report/download_page_links.json',JSON.stringify(await page.locator('a').evaluateAll(ns=>ns.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,120),href:n.href}))),null,2));
-              fs.writeFileSync('report/download_page_buttons.json',JSON.stringify(await page.locator('button').evaluateAll(ns=>ns.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,120),outer:n.outerHTML.slice(0,700)}))),null,2));
-              await page.screenshot({path:'report/download_page.png',fullPage:false});
-              fs.writeFileSync('report/download_page_success.txt','download page inspected');
-            }catch(e){fs.writeFileSync('report/download_page_error.txt',String(e.stack||e));process.exitCode=1;}
-            finally{await browser.close();}
-          })();
-          '@ | Set-Content -Encoding UTF8 probe_download.js
-          node probe_download.js
-      - name: Download verify install and launch official HnThemeEditor
-        run: |
-          $ErrorActionPreference='Continue'
-          $url='https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe'
-          $installer=Join-Path $pwd 'HnThemeEditor_2.5.0.exe'
-          "Official URL: $url" | Out-File report/install_log.txt
-          try {
-            Invoke-WebRequest -Uri $url -OutFile $installer -TimeoutSec 600
-            $p=Get-Item $installer
-            "Downloaded bytes: $($p.Length)" | Add-Content report/install_log.txt
-            "SHA256: $((Get-FileHash $installer -Algorithm SHA256).Hash)" | Add-Content report/install_log.txt
-            $s=Get-AuthenticodeSignature $installer
-            "Authenticode: $($s.Status)" | Add-Content report/install_log.txt
-            "Signer: $($s.SignerCertificate.Subject)" | Add-Content report/install_log.txt
-            if($p.Length -lt 3000000){ throw 'Unexpected tiny installer size' }
-            $proc=Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
-            if(-not $proc.WaitForExit(180000)){
-              "Installer timed out at 180s" | Add-Content report/install_log.txt
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            } else {
-              "Installer exit code: $($proc.ExitCode)" | Add-Content report/install_log.txt
-            }
-            Start-Sleep 8
-            $paths=@("$env:LOCALAPPDATA\Programs", "$env:LOCALAPPDATA", "$env:ProgramFiles")
-            foreach($dir in $paths){
-              if(Test-Path $dir){
-                Get-ChildItem $dir -Filter 'HnThemeEditor.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Out-File -Append report/editor_paths.txt
-              }
-            }
-            Get-Process | Where-Object { $_.ProcessName -match 'HnTheme|ThemeEditor' } | Select-Object Name, Id, Path, MainWindowTitle | Format-Table | Out-String | Add-Content report/install_log.txt
-            if(Test-Path report/editor_paths.txt){
-              $exe=(Get-Content report/editor_paths.txt | Where-Object {$_ -and (Test-Path $_)} | Select-Object -First 1)
-              if($exe){
-                "Launching $exe" | Add-Content report/install_log.txt
-                $app=Start-Process -FilePath $exe -PassThru
-                Start-Sleep 20
-                Get-Process | Where-Object { $_.ProcessName -match 'HnTheme|ThemeEditor' } | Select-Object Name, Id, Path, MainWindowTitle | Format-Table | Out-String | Add-Content report/install_log.txt
-              }
-            }
-            try {
-              Add-Type -AssemblyName System.Windows.Forms
-              Add-Type -AssemblyName System.Drawing
-              $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-              $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height
-              $g=[System.Drawing.Graphics]::FromImage($bmp)
-              $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
-              $bmp.Save('report/editor_desktop.png',[System.Drawing.Imaging.ImageFormat]::Png)
-              $g.Dispose();$bmp.Dispose()
-              "Captured virtual desktop $($b.Width)x$($b.Height)" | Add-Content report/install_log.txt
-            }catch{ "Screenshot failure: $($_.Exception.Message)" | Add-Content report/install_log.txt }
-          }catch{
-            "ERROR: $($_.Exception.Message)" | Add-Content report/install_log.txt
-            exit 1
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @'
+          using System;using System.Runtime.InteropServices;
+          public class VMClick {
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags,int dx,int dy,int data,int extraInfo);
           }
-      - name: Upload diagnostics
+          '@
+          function Screenshot([string]$name) {
+            $r=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp=New-Object System.Drawing.Bitmap $r.Width,$r.Height
+            $g=[System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($r.X,$r.Y,0,0,$r.Size)
+            $bmp.Save("report/$name.png",[System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose();$bmp.Dispose()
+          }
+          function Click([int]$x,[int]$y) {
+            [VMClick]::SetCursorPos($x,$y)|Out-Null
+            [VMClick]::mouse_event(2,0,0,0,0)
+            Start-Sleep -Milliseconds 125
+            [VMClick]::mouse_event(4,0,0,0,0)
+          }
+          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
+          Start-Process -FilePath $exe | Out-Null
+          Start-Sleep -Seconds 20
+          Screenshot '01_editor_welcome'
+          Click 140 554
+          Start-Sleep -Seconds 6
+          Screenshot '02_after_import_click'
+          $src=(Resolve-Path 'assets/06_Import_Seed_Optional/Old_Beta_NotForPhone.hnt').Path
+          "Seed $src" | Out-File report/import_status.txt
+          [System.Windows.Forms.SendKeys]::SendWait($src.Replace('{','{{}').Replace('}','{}}'))
+          Start-Sleep -Milliseconds 800
+          Screenshot '03_after_typing_seed_path'
+          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+          Start-Sleep -Seconds 14
+          Screenshot '04_after_seed_selection'
+          Get-Process | Where-Object {$_.ProcessName -match 'HnTheme'} | Select-Object ProcessName,MainWindowTitle,Id | Format-Table | Out-String | Add-Content report/import_status.txt
+          Get-ChildItem "$env:USERPROFILE/Documents" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Out-File report/document_dirs.txt
+      - name: Store import screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Windows-VM-Official-Editor-Probe
+          name: HONOR-Real-Editor-Import-Probe
           path: report/
-          if-no-files-found: warn
           retention-days: 7
