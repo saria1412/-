@@ -86,6 +86,60 @@ jobs:
           })();
           '@ | Set-Content -Encoding UTF8 probe_download.js
           node probe_download.js
+      - name: Download verify install and launch official HnThemeEditor
+        run: |
+          $ErrorActionPreference='Continue'
+          $url='https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe'
+          $installer=Join-Path $pwd 'HnThemeEditor_2.5.0.exe'
+          "Official URL: $url" | Out-File report/install_log.txt
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $installer -TimeoutSec 600
+            $p=Get-Item $installer
+            "Downloaded bytes: $($p.Length)" | Add-Content report/install_log.txt
+            "SHA256: $((Get-FileHash $installer -Algorithm SHA256).Hash)" | Add-Content report/install_log.txt
+            $s=Get-AuthenticodeSignature $installer
+            "Authenticode: $($s.Status)" | Add-Content report/install_log.txt
+            "Signer: $($s.SignerCertificate.Subject)" | Add-Content report/install_log.txt
+            if($p.Length -lt 3000000){ throw 'Unexpected tiny installer size' }
+            $proc=Start-Process -FilePath $installer -ArgumentList '/S' -PassThru
+            if(-not $proc.WaitForExit(180000)){
+              "Installer timed out at 180s" | Add-Content report/install_log.txt
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            } else {
+              "Installer exit code: $($proc.ExitCode)" | Add-Content report/install_log.txt
+            }
+            Start-Sleep 8
+            $paths=@("$env:LOCALAPPDATA\Programs", "$env:LOCALAPPDATA", "$env:ProgramFiles")
+            foreach($dir in $paths){
+              if(Test-Path $dir){
+                Get-ChildItem $dir -Filter 'HnThemeEditor.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Out-File -Append report/editor_paths.txt
+              }
+            }
+            Get-Process | Where-Object { $_.ProcessName -match 'HnTheme|ThemeEditor' } | Select-Object Name, Id, Path, MainWindowTitle | Format-Table | Out-String | Add-Content report/install_log.txt
+            if(Test-Path report/editor_paths.txt){
+              $exe=(Get-Content report/editor_paths.txt | Where-Object {$_ -and (Test-Path $_)} | Select-Object -First 1)
+              if($exe){
+                "Launching $exe" | Add-Content report/install_log.txt
+                $app=Start-Process -FilePath $exe -PassThru
+                Start-Sleep 20
+                Get-Process | Where-Object { $_.ProcessName -match 'HnTheme|ThemeEditor' } | Select-Object Name, Id, Path, MainWindowTitle | Format-Table | Out-String | Add-Content report/install_log.txt
+              }
+            }
+            try {
+              Add-Type -AssemblyName System.Windows.Forms
+              Add-Type -AssemblyName System.Drawing
+              $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+              $g=[System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+              $bmp.Save('report/editor_desktop.png',[System.Drawing.Imaging.ImageFormat]::Png)
+              $g.Dispose();$bmp.Dispose()
+              "Captured virtual desktop $($b.Width)x$($b.Height)" | Add-Content report/install_log.txt
+            }catch{ "Screenshot failure: $($_.Exception.Message)" | Add-Content report/install_log.txt }
+          }catch{
+            "ERROR: $($_.Exception.Message)" | Add-Content report/install_log.txt
+            exit 1
+          }
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
