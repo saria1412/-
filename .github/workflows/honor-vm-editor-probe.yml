@@ -65,6 +65,27 @@ jobs:
           })();
           '@ | Set-Content -Encoding UTF8 probe.js
           node probe.js
+      - name: Inspect HONOR download page
+        run: |
+          @'
+          const {chromium}=require('playwright'),fs=require('fs');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const page=await browser.newPage({viewport:{width:1366,height:950},acceptDownloads:true,locale:'zh-CN'});
+            try{
+              await page.goto('https://developer.honor.com/cn/docs/11106/guides/download',{waitUntil:'domcontentloaded',timeout:60000});
+              await page.waitForTimeout(16000);
+              fs.writeFileSync('report/download_page_url.txt',page.url());
+              fs.writeFileSync('report/download_page_text.txt',(await page.locator('body').innerText()).slice(0,50000));
+              fs.writeFileSync('report/download_page_links.json',JSON.stringify(await page.locator('a').evaluateAll(ns=>ns.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,120),href:n.href}))),null,2));
+              fs.writeFileSync('report/download_page_buttons.json',JSON.stringify(await page.locator('button').evaluateAll(ns=>ns.map(n=>({text:(n.innerText||n.textContent||'').trim().slice(0,120),outer:n.outerHTML.slice(0,700)}))),null,2));
+              await page.screenshot({path:'report/download_page.png',fullPage:false});
+              fs.writeFileSync('report/download_page_success.txt','download page inspected');
+            }catch(e){fs.writeFileSync('report/download_page_error.txt',String(e.stack||e));process.exitCode=1;}
+            finally{await browser.close();}
+          })();
+          '@ | Set-Content -Encoding UTF8 probe_download.js
+          node probe_download.js
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
