@@ -15,11 +15,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force report,assets | Out-Null
           $ErrorActionPreference='Stop'
-          Invoke-WebRequest -Uri 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-f5ac-8210-942e-6f1edf08e368/raw?se=2026-10-08T23%3A53%3A55Z&sp=r&sv=2026-02-06&sr=b&scid=32164b39-88c8-525b-9234-ff442c919289&skoid=002823aa-689d-47ca-9347-108c20f4f00d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T22%3A55%3A40Z&ske=2026-10-09T22%3A55%3A40Z&sks=b&skv=2026-02-06&sig=jVMHfmMKCHAmnMJGP2LE22Mq8bwaU3/hqwcD9k9Odp4%3D' -OutFile assets.zip -TimeoutSec 120
+          Invoke-WebRequest -Uri 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-db20-8210-8e8f-f35965e6da03/raw?se=2026-10-09T00%3A01%3A18Z&sp=r&sv=2026-02-06&sr=b&scid=989da942-7c7d-5f81-b4e6-ebb4a913f5f5&skoid=002823aa-689d-47ca-9347-108c20f4f00d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T07%3A40%3A13Z&ske=2026-10-09T07%3A40%3A13Z&sks=b&skv=2026-02-06&sig=5pgzSwYLrWkyxLhvmhkB/1DAFpCnPmmpt6/xwd0HYfw%3D' -OutFile assets.zip -TimeoutSec 120
           Expand-Archive -LiteralPath assets.zip -DestinationPath assets -Force
           "Asset bytes: $((Get-Item assets.zip).Length)" | Out-File report/asset_status.txt
           Get-ChildItem assets -Recurse -File | Select-Object -ExpandProperty FullName | Out-File report/asset_inventory.txt
-          if(-not (Test-Path 'assets/06_Import_Seed_Optional/Old_Beta_NotForPhone.hnt')){ throw 'Expected seed theme is absent' }
+          if(-not (Test-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt')){ throw 'Expected seed theme is absent' }
       - name: Install official editor
         shell: pwsh
         run: |
@@ -29,7 +29,7 @@ jobs:
           $p=Start-Process -FilePath "$pwd/HnThemeEditor.exe" -ArgumentList '/S' -PassThru -Wait
           "Installer return $($p.ExitCode)" | Add-Content report/editor_status.txt
           if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor executable not found'}
-      - name: Open editor and inspect Import dialogs
+      - name: Open editor confirm import and inspect converted project
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.Windows.Forms
@@ -62,7 +62,7 @@ jobs:
           Click 140 554
           Start-Sleep -Seconds 6
           Screenshot '02_after_import_click'
-          $src=(Resolve-Path 'assets/06_Import_Seed_Optional/Old_Beta_NotForPhone.hnt').Path
+          $src=(Resolve-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt').Path
           "Seed $src" | Out-File report/import_status.txt
           [System.Windows.Forms.SendKeys]::SendWait($src.Replace('{','{{}').Replace('}','{}}'))
           Start-Sleep -Milliseconds 800
@@ -70,12 +70,20 @@ jobs:
           [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
           Start-Sleep -Seconds 14
           Screenshot '04_after_seed_selection'
+          Click 780 439
+          Start-Sleep -Seconds 18
+          Screenshot '05_after_import_confirm_18s'
+          Start-Sleep -Seconds 35
+          Screenshot '06_after_import_confirm_53s'
+          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1200 -ExpandProperty FullName | Out-File report/project_workspace_listing.txt
+          $proj=Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName
+          "Projects: $($proj -join ' | ')" | Add-Content report/import_status.txt
           Get-Process | Where-Object {$_.ProcessName -match 'HnTheme'} | Select-Object ProcessName,MainWindowTitle,Id | Format-Table | Out-String | Add-Content report/import_status.txt
           Get-ChildItem "$env:USERPROFILE/Documents" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Out-File report/document_dirs.txt
       - name: Store import screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Real-Editor-Import-Probe
+          name: HONOR-Real-Editor-Import-R02-Confirm
           path: report/
           retention-days: 7
