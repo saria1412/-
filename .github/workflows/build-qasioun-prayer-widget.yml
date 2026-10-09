@@ -1,4 +1,4 @@
-name: Build SARF Qasioun Prayer Widget
+name: Build Qasioun Umayyad Prayer v0.2
 on:
   push:
     branches:
@@ -33,6 +33,13 @@ jobs:
             -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
           echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
           test $(stat -c%s QasiounPrayer/app/src/main/res/raw/adhan.ogg) -gt 1000000
+      - name: Verify approved Umayyad icon and app version
+        run: |
+          test -s QasiounPrayer/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp
+          test ! -e QasiounPrayer/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          echo '3f490f7ecf245c488018f1d4f482650b473731d57a551b341dd3ebc6e8c660c4  QasiounPrayer/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp' | sha256sum -c -
+          grep -q 'versionCode 2' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.2.0-umayyad-beta'" QasiounPrayer/app/build.gradle
       - name: Native Java unit tests
         working-directory: QasiounPrayer
         run: bash tests/run.sh
@@ -43,15 +50,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk
-          unzip -t release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk | tail -1
-          test "$(unzip -l release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk | grep -c classes.dex)" -gt 0
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk
-          sha256sum release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk > release/SARF-Qasioun-Prayer-Widget-0.1.0-BETA.apk.sha256
+          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk
+          unzip -t release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk | tail -1
+          test "$(unzip -l release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk | grep -c classes.dex)" -gt 0
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk
+          unzip -Z1 release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk | grep -q 'ic_launcher.webp'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk | grep -F "versionName='0.2.0-umayyad-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk | grep -F "package: name='com.sarf.qasioun.prayer'"
+          sha256sum release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk > release/Qasioun-Prayer-MagicOS10-Umayyad-v0.2.0-BETA.apk.sha256
           cp QasiounPrayer/README_AR.md release/README_AR.md
       - uses: actions/upload-artifact@v4
         with:
-          name: SARF-Qasioun-Prayer-Widget-APK
+          name: Qasioun-Umayyad-v02-APK
           path: release/*
           if-no-files-found: error
           retention-days: 14
