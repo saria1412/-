@@ -1,96 +1,127 @@
-name: HONOR Editor MagicOS 10 Project Conversion Probe
+name: HONOR Qasioun Real HNT Export
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
     paths: ['.github/workflows/honor-vm-editor-probe.yml']
 permissions:
   contents: read
+  actions: read
 jobs:
-  magic10-convert:
+  export:
     runs-on: windows-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
-      - name: Download project assets
+      - name: Restore previously imported HONOR project
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force report,previous | Out-Null
+          gh run download 37885474600 --repo 'saria1412/-' --name 'HONOR-GUI-Export-Qasioun-Report' --dir previous
+          $source='previous/HONOR_EDITOR_IMPORTED_PROJECT.zip'
+          if(-not (Test-Path $source)){throw 'Previous project archive is unavailable'}
+          $workspace="$env:APPDATA/HnThemeEditor/workspace"
+          New-Item -ItemType Directory -Force $workspace | Out-Null
+          Expand-Archive -LiteralPath $source -DestinationPath $workspace -Force
+          Get-ChildItem $workspace -Directory | Select-Object Name,FullName | Format-Table | Out-String | Out-File report/restored_project.txt
+      - name: Install official HnThemeEditor
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force report,assets | Out-Null
-          Invoke-WebRequest -Uri 'https://sdmntprcentralindia.oaiusercontent.com/files/00000000-1d9c-8208-8462-332081dbf22e/raw?se=2026-10-09T05%3A09%3A46Z&sp=r&sv=2026-02-06&sr=b&scid=c322b8d4-15b6-5098-a9c3-aa61e6addbe2&skoid=f2622f62-3126-45cd-85e0-0bc840c3afdc&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-09T01%3A32%3A53Z&ske=2026-10-10T01%3A32%3A53Z&sks=b&skv=2026-02-06&sig=dgVq5dtHABnxTdqBtRK9hhnsUmQMhlP0EGBKudiTBUM%3D' -OutFile assets.zip -TimeoutSec 150
-          Expand-Archive assets.zip -DestinationPath assets -Force
-          if(-not (Test-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt')) {throw 'Seed file missing'}
-      - name: Install official HONOR editor
-        shell: pwsh
-        run: |
+          $ErrorActionPreference='Stop'
           Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile setup.exe -TimeoutSec 600
-          $proc=Start-Process "$pwd/setup.exe" -ArgumentList '/S' -PassThru
-          if(-not $proc.WaitForExit(210000)){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}
-          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor not installed'}
+          $sig=Get-AuthenticodeSignature setup.exe
+          'Signature: '+$sig.Status | Out-File report/setup.txt
+          $p=Start-Process "$pwd/setup.exe" -ArgumentList '/S' -PassThru
+          if(-not $p.WaitForExit(200000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor installation failed'}
           npm install --no-save playwright@1.55.1 | Out-File report/npm.txt
-      - name: Import seed and navigate project conversion controls
+      - name: Open imported project in official editor and invoke export
         shell: pwsh
         run: |
-          Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName System.Drawing
-          Add-Type @'
-          using System;using System.Runtime.InteropServices;
-          public class MClick {
-          [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
-          [DllImport("user32.dll")] public static extern void mouse_event(int flags,int dx,int dy,int data,int ext);
-          }
-          '@
-          function Click([int]$x,[int]$y) {
-            [MClick]::SetCursorPos($x,$y)|Out-Null
-            [MClick]::mouse_event(2,0,0,0,0)
-            Start-Sleep -Milliseconds 140
-            [MClick]::mouse_event(4,0,0,0,0)
-          }
           $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
-          Start-Process $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*')|Out-Null
-          Start-Sleep -Seconds 23
-          Click 140 554
-          Start-Sleep -Seconds 5
-          $src=(Resolve-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt').Path
-          [System.Windows.Forms.SendKeys]::SendWait($src)
-          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-          Start-Sleep -Seconds 8
-          Click 780 439
-          Start-Sleep -Seconds 35
+          Start-Process -FilePath $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*') | Out-Null
+          Start-Sleep -Seconds 25
           @'
-          const fs=require('fs'), {chromium}=require('playwright');
+          const fs=require('fs');
+          const {chromium}=require('playwright');
           (async()=>{
             try{
-              const b=await chromium.connectOverCDP('http://127.0.0.1:9222');
-              const pages=b.contexts().flatMap(c=>c.pages());
-              const p=pages.find(x=>x.url().startsWith('file:'))||pages[0];
-              if(!p) throw new Error('Missing editor page');
-              fs.writeFileSync('report/in_editor.txt',(await p.locator('body').innerText()).slice(0,20000));
-              const btn=p.getByText('Homepage',{exact:true});
-              fs.writeFileSync('report/home_button_count.txt',String(await btn.count()));
-              await btn.first().click({timeout:4000});
-              await p.waitForTimeout(2500);
-              await p.screenshot({path:'report/01_homepage.png'});
-              fs.writeFileSync('report/homepage_text.txt',(await p.locator('body').innerText()).slice(0,25000));
-              fs.writeFileSync('report/homepage_links.json',JSON.stringify(await p.locator('a,button,[title],[aria-label]').evaluateAll(ns=>ns.map(n=>({tag:n.tagName,html:n.outerHTML.slice(0,700)})).slice(0,260)),null,2));
-              const pn=p.getByText('GitHub_R02_Seed',{exact:false});
-              const count=await pn.count();
-              fs.writeFileSync('report/project_match_count.txt',String(count));
-              if(count) {
-                const q=pn.last();
-                await q.hover({timeout:3500});
-                await p.waitForTimeout(650);
-                await p.screenshot({path:'report/02_card_hovered.png'});
-                fs.writeFileSync('report/project_parent_html.txt',await q.evaluate(n=>n.parentElement?.parentElement?.parentElement?.outerHTML.slice(0,14000)||''));
-                fs.writeFileSync('report/project_dom_text.txt',(await p.locator('body').innerText()).slice(0,25000));
+              const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
+              const pages=browser.contexts().flatMap(c=>c.pages());
+              const page=pages.find(p=>p.url().startsWith('file:'))||pages[0];
+              if(!page)throw Error('No editor UI');
+              fs.writeFileSync('report/01_home_text.txt',(await page.locator('body').innerText()).slice(0,35000));
+              await page.screenshot({path:'report/01_home.png'});
+              const hasProject=await page.getByText('GitHub_R02_Seed',{exact:false}).count();
+              fs.writeFileSync('report/project_match.txt',String(hasProject));
+              if(hasProject){
+                const item=page.getByText('GitHub_R02_Seed',{exact:false}).last();
+                await item.evaluate(n=>n.click());
+                await page.waitForTimeout(10000);
+              }else{
+                const open=page.getByText('Open',{exact:true}).first();
+                await open.evaluate(n=>n.click());
+                await page.waitForTimeout(1500);
+                fs.writeFileSync('report/no_project.txt','Project card absent; Open dialog should be visible');
               }
-              fs.writeFileSync('report/project_visible_buttons.json',JSON.stringify(await p.locator('button').evaluateAll(ns=>ns.map(n=>({text:(n.innerText||'').slice(0,100),title:n.title,html:n.outerHTML.slice(0,500),rect:(()=>{const r=n.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height}})()}))),null,2));
-              await b.close();
-            }catch(e){fs.writeFileSync('report/error.txt',String(e.stack||e));}
+              await page.screenshot({path:'report/02_after_open_attempt.png'});
+              fs.writeFileSync('report/02_after_open_text.txt',(await page.locator('body').innerText()).slice(0,35000));
+              const exportBtn=page.getByText('Export',{exact:true}).first();
+              if((await exportBtn.count())>0){
+                await exportBtn.evaluate(n=>n.click());
+                await page.waitForTimeout(1800);
+                await page.screenshot({path:'report/03_export_window.png'});
+                fs.writeFileSync('report/03_export_text.txt',(await page.locator('body').innerText()).slice(0,35000));
+                const names=await page.locator('input').evaluateAll(ns=>ns.map(n=>({value:n.value,html:n.outerHTML.slice(0,500)})));
+                fs.writeFileSync('report/03_export_inputs.json',JSON.stringify(names,null,2));
+                const confirm=page.getByText('OK',{exact:true}).last();
+                if((await confirm.count())>0){
+                  await confirm.evaluate(n=>n.click());
+                  await page.waitForTimeout(9000);
+                  await page.screenshot({path:'report/04_after_export_click.png'});
+                  fs.writeFileSync('report/04_after_export_text.txt',(await page.locator('body').innerText()).slice(0,35000));
+                }else fs.writeFileSync('report/missing_OK.txt','OK button not found');
+              }else fs.writeFileSync('report/missing_export.txt','Export control not available');
+              await browser.close();
+            }catch(e){fs.writeFileSync('report/UI_ERROR.txt',String(e.stack||e));}
           })();
-          '@ | Set-Content -Encoding UTF8 inspect_home.js
-          node inspect_home.js
-      - name: Upload conversion probe
+          '@ | Set-Content -Encoding UTF8 run_export.js
+          node run_export.js
+          Start-Sleep -Seconds 3
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+          $gfx=[System.Drawing.Graphics]::FromImage($bm)
+          $gfx.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+          $bm.Save('report/05_desktop_after_export.png',[System.Drawing.Imaging.ImageFormat]::Png)
+          $gfx.Dispose();$bm.Dispose()
+          [System.Windows.Forms.SendKeys]::SendWait((Join-Path $pwd 'Syria_Qasioun_HONOR_Official.hnt'))
+          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+          Start-Sleep -Seconds 12
+          $dirs=@($pwd.Path,"$env:USERPROFILE/Desktop","$env:USERPROFILE/Documents","$env:USERPROFILE/Downloads","$env:APPDATA/HnThemeEditor")
+          $all=@()
+          foreach($dir in $dirs){if(Test-Path $dir){$all+=Get-ChildItem $dir -Filter '*.hnt' -File -Recurse -ErrorAction SilentlyContinue}}
+          $all=$all|Sort-Object FullName -Unique
+          $all|Select-Object FullName,Length,LastWriteTime|Format-Table|Out-String|Out-File report/found_hnt_files.txt
+          $i=0
+          foreach($item in $all){
+            if($item.FullName -match 'previous|workspace|node_modules'){continue}
+            if($item.Length -lt 10000){continue}
+            $i++
+            Copy-Item $item.FullName "report/EXP_$i_$($item.Name)" -ErrorAction SilentlyContinue
+          }
+          $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+          $gfx=[System.Drawing.Graphics]::FromImage($bm)
+          $gfx.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+          $bm.Save('report/06_desktop_after_save.png',[System.Drawing.Imaging.ImageFormat]::Png)
+          $gfx.Dispose();$bm.Dispose()
+      - name: Upload export outcome
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-MagicOS10-Version-Conversion-Inspection
+          name: HONOR-Qasioun-Official-Export-Output
           path: report/
-          retention-days: 7
+          if-no-files-found: warn
+          retention-days: 14
