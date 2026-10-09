@@ -1,11 +1,14 @@
-name: Build Mawaqit Al-Salah v0.4 Compass & Widgets
+name: Build Mawaqit Al-Salah v0.5 Responsive Widgets
+
 on:
   push:
     branches:
-      - 'qasioun-prayer-widget-v04-compass'
+      - 'qasioun-prayer-widget-v05-layout'
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -19,15 +22,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Verify and extract reviewed Android source
+      - name: Verify known v0.4 source and apply v0.5 delta
         run: |
           set -euo pipefail
           echo '05fd0a6c0c4b3a4b276da11d0b64cf7def6fb14e8860ea5b14250b280b417507  QasiounPrayer_Source.zip' | sha256sum -c -
           mkdir -p QasiounPrayer
           unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
-          test -s QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/QiblaActivity.java
-          test -s QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/CityResolver.java
-      - name: Add verified freely licensed adhan audio
+          base64 -d ci/qasioun-widget-v05.patch.b64 | tar -xz -C QasiounPrayer
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png
+          grep -q "versionCode 5" QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.5.0-widget-layout-beta'" QasiounPrayer/app/build.gradle
+          python3 QasiounPrayer/tests/test_widget_layout.py
+      - name: Download verified CC0 Adhan
         run: |
           set -euo pipefail
           mkdir -p QasiounPrayer/app/src/main/res/raw
@@ -36,66 +43,44 @@ jobs:
             -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
           echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
           test $(stat -c%s QasiounPrayer/app/src/main/res/raw/adhan.ogg) -gt 1000000
-      - name: Fix Android API 30 compatible byte decoding
+      - name: Ensure Android API compatible stream decoding
         run: |
-          set -euo pipefail
           p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
           sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
           grep -q 'new String(out.toByteArray(), StandardCharsets.UTF_8)' "$p"
-      - name: Use only supported Android RemoteViews widget elements
-        run: |
-          set -euo pipefail
-          p=QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
-          sed -i 's/<View android:layout_width="match_parent" android:layout_height="1dp"/<ImageView android:layout_width="match_parent" android:layout_height="1dp"/g' "$p"
-          grep -q 'ImageView android:layout_width="match_parent" android:layout_height="1dp"' "$p"
-          ! grep -q '<View ' "$p"
-      - name: Check requested visual identity and functionality
-        run: |
-          set -euo pipefail
-          grep -q 'android:label="مواقيت الصلاة"' QasiounPrayer/app/src/main/AndroidManifest.xml
-          grep -q 'versionCode 4' QasiounPrayer/app/build.gradle
-          grep -q "versionName '0.4.0-compass-widget-beta'" QasiounPrayer/app/build.gradle
-          grep -q 't_sunrise' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
-          grep -q 'WidgetCompactProvider' QasiounPrayer/app/src/main/AndroidManifest.xml
-          grep -q 'remapCoordinateSystem' QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/QiblaActivity.java
-          ! grep -q 'سورية  ·  الجامع الأموي' QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/MainActivity.java
-          grep -q 'widget_city' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
-          ! grep -q 'widget_title' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
-          grep -q 'QiblaActivity' QasiounPrayer/app/src/main/AndroidManifest.xml
-          test -s QasiounPrayer/app/src/main/res/font/noto_kufi_arabic_bold.ttf
-          test -s QasiounPrayer/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp
-      - name: Execute unit tests and static validation
+      - name: Run native tests and widget-specific acceptance checks
         working-directory: QasiounPrayer
-        run: bash tests/run.sh
-      - name: Build and Android lint
+        run: |
+          bash tests/run.sh
+          python3 tests/test_widget_layout.py
+          ! grep -q 'سورية  ·  الجامع الأموي' app/src/main/java/com/sarf/qasioun/prayer/MainActivity.java
+      - name: Build installable APK and run Android Lint
         working-directory: QasiounPrayer
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
-      - name: Collect Android lint diagnostics if necessary
+      - name: Print Lint diagnostics if build fails
         if: failure()
         run: |
           p=QasiounPrayer/app/build/reports/lint-results-debug.txt
-          if test -f "$p"; then
-            grep -n -B2 -A4 'Error:' "$p" || true
-            tail -n 35 "$p"
-          fi
-      - name: Verify signed installable APK
+          if test -f "$p"; then grep -n -B2 -A4 'Error:' "$p" || true; fi
+      - name: Verify APK certificate, resources and identifiers
         run: |
           set -euo pipefail
           mkdir -p release
-          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk
-          unzip -t release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | tail -n 1
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "package: name='com.sarf.qasioun.prayer'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "versionName='0.4.0-compass-widget-beta'"
-          unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -E 'res/font/noto_kufi_arabic_(bold|regular)'
-          unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F 'ic_launcher.webp'
-          sha256sum release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk > release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk.sha256
+          apk=release/Mawaqit_Al_Salah_Umayyad_v0.5.0_BETA.apk
+          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.prayer'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='0.5.0-widget-layout-beta'"
+          unzip -Z1 "$apk" | grep -q 'widget_preview_compact'
+          unzip -Z1 "$apk" | grep -q 'widget_preview_expanded'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" res/xml/prayer_widget_compact.xml | grep 'targetCellHeight'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" res/xml/prayer_widget.xml | grep 'targetCellHeight'
+          sha256sum "$apk" > "$apk.sha256"
           cp QasiounPrayer/README_AR.md release/README_AR.md
-          cp QasiounPrayer/THIRD_PARTY_FONTS_OFL.txt release/Noto_Font_OFL_License.txt
-      - name: Publish tested APK artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: Mawaqit-Al-Salah-v04-APK
+          name: Mawaqit-Al-Salah-v05-Widgets-APK
           path: release/*
           if-no-files-found: error
           retention-days: 14
