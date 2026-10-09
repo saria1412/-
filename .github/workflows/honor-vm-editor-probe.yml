@@ -168,7 +168,15 @@ jobs:
               await p.waitForTimeout(3500);
               await p.screenshot({path:'report/07_after_export_ok.png'});
               fs.writeFileSync('report/07_after_export_text.txt',(await p.locator('body').innerText()).slice(0,35000));
-              fs.writeFileSync('report/export_clicked.txt','YES; waiting for native Save dialog if present');
+              const continueBtn=p.getByText('Continue',{exact:true}).last();
+              if((await continueBtn.count())>0 && await continueBtn.isVisible()){
+                await continueBtn.evaluate(n=>n.click());
+                await p.waitForTimeout(3200);
+                await p.screenshot({path:'report/07B_after_continue.png'});
+                fs.writeFileSync('report/07B_after_continue_text.txt',(await p.locator('body').innerText()).slice(0,35000));
+                fs.writeFileSync('report/continue_clicked.txt','YES');
+              }else fs.writeFileSync('report/continue_clicked.txt','NOT FOUND');
+              fs.writeFileSync('report/export_clicked.txt','YES; both export stages inspected');
             }catch(e){fs.writeFileSync('report/export_error.txt',String(e.stack||e));process.exitCode=1;}
             finally {if(b)await b.close()}
           })();
