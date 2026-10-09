@@ -1,4 +1,4 @@
-name: HONOR Theme Editor Real Import Probe
+name: HONOR Official Export of Qasioun Theme
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
@@ -6,84 +6,131 @@ on:
 permissions:
   contents: read
 jobs:
-  import-probe:
+  actual-export:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - name: Retrieve design assets privately
+      - name: Retrieve themed assets temporarily
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force report,assets | Out-Null
           $ErrorActionPreference='Stop'
-          Invoke-WebRequest -Uri 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-db20-8210-8e8f-f35965e6da03/raw?se=2026-10-09T00%3A01%3A18Z&sp=r&sv=2026-02-06&sr=b&scid=989da942-7c7d-5f81-b4e6-ebb4a913f5f5&skoid=002823aa-689d-47ca-9347-108c20f4f00d&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T07%3A40%3A13Z&ske=2026-10-09T07%3A40%3A13Z&sks=b&skv=2026-02-06&sig=5pgzSwYLrWkyxLhvmhkB/1DAFpCnPmmpt6/xwd0HYfw%3D' -OutFile assets.zip -TimeoutSec 120
+          New-Item -ItemType Directory -Force report,assets,export | Out-Null
+          Invoke-WebRequest -Uri 'https://sdmntprcentralindia.oaiusercontent.com/files/00000000-5168-8208-ae6b-5936316a650d/raw?se=2026-10-09T04%3A51%3A49Z&sp=r&sv=2026-02-06&sr=b&scid=ca01233b-fc5d-526b-ba3d-d29d93d1517f&skoid=f2622f62-3126-45cd-85e0-0bc840c3afdc&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-09T04%3A17%3A41Z&ske=2026-10-10T04%3A17%3A41Z&sks=b&skv=2026-02-06&sig=JobByaa/TIWeTeHxZXRKzXtJ9Sw%2B72uUbFGpmd/sBtc%3D' -OutFile assets.zip -TimeoutSec 150
           Expand-Archive -LiteralPath assets.zip -DestinationPath assets -Force
-          "Asset bytes: $((Get-Item assets.zip).Length)" | Out-File report/asset_status.txt
-          Get-ChildItem assets -Recurse -File | Select-Object -ExpandProperty FullName | Out-File report/asset_inventory.txt
-          if(-not (Test-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt')){ throw 'Expected seed theme is absent' }
-      - name: Install official editor
+          $seed='assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt'
+          if(-not (Test-Path $seed)) {throw 'Seed absent'}
+          "Seed: $((Get-Item $seed).Length) bytes" | Set-Content report/status.txt
+      - name: Install official HONOR editor
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile 'HnThemeEditor.exe' -TimeoutSec 600
-          "Official installer bytes $((Get-Item HnThemeEditor.exe).Length)" | Out-File report/editor_status.txt
-          $p=Start-Process -FilePath "$pwd/HnThemeEditor.exe" -ArgumentList '/S' -PassThru -Wait
-          "Installer return $($p.ExitCode)" | Add-Content report/editor_status.txt
-          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor executable not found'}
-      - name: Open editor confirm import and inspect converted project
+          Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile editor-install.exe -TimeoutSec 600
+          $i=Start-Process -FilePath "$pwd/editor-install.exe" -ArgumentList '/S' -PassThru
+          if(-not $i.WaitForExit(200000)) {
+            'Installer process timed out; checking installed app' | Add-Content report/status.txt
+            Stop-Process -Id $i.Id -Force -ErrorAction SilentlyContinue
+          } else {
+            "Installer exit: $($i.ExitCode)" | Add-Content report/status.txt
+          }
+          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
+          if(-not (Test-Path $exe)) {throw 'Installed editor executable missing'}
+          "Editor: $exe" | Add-Content report/status.txt
+      - name: Import in real GUI and open Export
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
           Add-Type @'
           using System;using System.Runtime.InteropServices;
-          public class VMClick {
+          public class HNMouse {
             [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
-            [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags,int dx,int dy,int data,int extraInfo);
+            [DllImport("user32.dll")] public static extern void mouse_event(int f,int dx,int dy,int z,int extra);
           }
           '@
-          function Screenshot([string]$name) {
-            $r=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bmp=New-Object System.Drawing.Bitmap $r.Width,$r.Height
-            $g=[System.Drawing.Graphics]::FromImage($bmp)
-            $g.CopyFromScreen($r.X,$r.Y,0,0,$r.Size)
-            $bmp.Save("report/$name.png",[System.Drawing.Imaging.ImageFormat]::Png)
-            $g.Dispose();$bmp.Dispose()
+          function Snap([string]$file) {
+            $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+            $g=[System.Drawing.Graphics]::FromImage($bm)
+            $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+            $bm.Save("report/$file.png",[System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose();$bm.Dispose()
           }
-          function Click([int]$x,[int]$y) {
-            [VMClick]::SetCursorPos($x,$y)|Out-Null
-            [VMClick]::mouse_event(2,0,0,0,0)
-            Start-Sleep -Milliseconds 125
-            [VMClick]::mouse_event(4,0,0,0,0)
+          function Click([int]$x,[int]$y){
+            [HNMouse]::SetCursorPos($x,$y)|Out-Null
+            [HNMouse]::mouse_event(2,0,0,0,0)
+            Start-Sleep -Milliseconds 180
+            [HNMouse]::mouse_event(4,0,0,0,0)
+          }
+          function DumpWindows([string]$label){
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $wins=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+            foreach($w in $wins){
+              try {
+                $p=$w.Current
+                if($p.Name -or $p.ClassName){
+                  "$($p.Name) :: $($p.ClassName) :: $($p.ControlType.ProgrammaticName) :: $($p.BoundingRectangle.ToString())" | Out-File -Append "report/ui_$label.txt"
+                }
+              }catch{}
+            }
           }
           $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
           Start-Process -FilePath $exe | Out-Null
-          Start-Sleep -Seconds 20
-          Screenshot '01_editor_welcome'
+          Start-Sleep -Seconds 23
+          Snap '01_open'
           Click 140 554
-          Start-Sleep -Seconds 6
-          Screenshot '02_after_import_click'
+          Start-Sleep -Seconds 5
           $src=(Resolve-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt').Path
-          "Seed $src" | Out-File report/import_status.txt
-          [System.Windows.Forms.SendKeys]::SendWait($src.Replace('{','{{}').Replace('}','{}}'))
-          Start-Sleep -Milliseconds 800
-          Screenshot '03_after_typing_seed_path'
+          [System.Windows.Forms.SendKeys]::SendWait($src)
+          Start-Sleep -Milliseconds 400
           [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-          Start-Sleep -Seconds 14
-          Screenshot '04_after_seed_selection'
+          Start-Sleep -Seconds 8
+          Snap '02_import_save_dialog'
           Click 780 439
-          Start-Sleep -Seconds 18
-          Screenshot '05_after_import_confirm_18s'
-          Start-Sleep -Seconds 35
-          Screenshot '06_after_import_confirm_53s'
-          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1200 -ExpandProperty FullName | Out-File report/project_workspace_listing.txt
-          $proj=Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName
-          "Projects: $($proj -join ' | ')" | Add-Content report/import_status.txt
-          Get-Process | Where-Object {$_.ProcessName -match 'HnTheme'} | Select-Object ProcessName,MainWindowTitle,Id | Format-Table | Out-String | Add-Content report/import_status.txt
-          Get-ChildItem "$env:USERPROFILE/Documents" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Out-File report/document_dirs.txt
-      - name: Store import screenshots
+          Start-Sleep -Seconds 42
+          Snap '03_imported_project'
+          DumpWindows 'imported'
+          Click 575 63
+          Start-Sleep -Seconds 9
+          Snap '04_export_dialog'
+          DumpWindows 'export'
+          # Capture all launched Windows and dialog info
+          Get-Process | Where-Object {$_.ProcessName -match 'HnTheme'} | Select-Object Name,Id,Path,MainWindowTitle | Format-Table | Out-String | Add-Content report/status.txt
+          $top=[System.Windows.Automation.AutomationElement]::RootElement
+          $children=$top.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+          foreach($el in $children) {
+            try {
+              if($el.Current.Name -match 'Honor|Save|Export|Theme|Desktop|保存|导出') {
+                "Window $($el.Current.Name)" | Out-File -Append report/ui_details.txt
+                $nodes=$el.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+                $m=[Math]::Min($nodes.Count,500)
+                for($k=0;$k -lt $m;$k++){
+                  $t=$nodes[$k].Current
+                  "$k|$($t.Name)|$($t.ClassName)|$($t.ControlType.ProgrammaticName)|$($t.AutomationId)|$($t.BoundingRectangle.ToString())" | Out-File -Append report/ui_details.txt
+                }
+              }
+            }catch{}
+          }
+          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory | Select-Object -ExpandProperty FullName | Add-Content report/status.txt
+          Get-ChildItem export -File -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Add-Content report/status.txt
+      - name: Preserve actual converted project from official editor
+        if: always()
+        shell: pwsh
+        run: |
+          $workspace="$env:APPDATA/HnThemeEditor/workspace"
+          $proj=Get-ChildItem $workspace -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -match 'GitHub_R02_Seed'} | Select-Object -First 1
+          if($proj){
+            "Imported project found: $($proj.FullName)" | Add-Content report/status.txt
+            Compress-Archive -Path $proj.FullName -DestinationPath report/HONOR_EDITOR_IMPORTED_PROJECT.zip -CompressionLevel Optimal
+            "Imported project archive bytes: $((Get-Item report/HONOR_EDITOR_IMPORTED_PROJECT.zip).Length)" | Add-Content report/status.txt
+          }
+          Get-ChildItem "$env:USERPROFILE" -Recurse -Filter '*.hnt' -ErrorAction SilentlyContinue | Where-Object {$_.FullName -notlike '*assets*'} | Select-Object FullName,Length | Out-File report/all_generated_hnt_files.txt
+      - name: Export test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Real-Editor-Import-R02-Confirm
+          name: HONOR-GUI-Export-Qasioun-Report
           path: report/
+          if-no-files-found: warn
           retention-days: 7
