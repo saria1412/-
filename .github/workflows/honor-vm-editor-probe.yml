@@ -1,4 +1,4 @@
-name: HONOR Official Export of Qasioun Theme
+name: HONOR Qasioun Export With MagicOS10 Settings
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
@@ -6,37 +6,32 @@ on:
 permissions:
   contents: read
 jobs:
-  actual-export:
+  real-export:
     runs-on: windows-latest
     timeout-minutes: 20
-    steps:
-      - name: Retrieve themed assets temporarily
+    defaults:
+      run:
         shell: pwsh
+    steps:
+      - name: Stage Qasioun assets
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force report,assets,export | Out-Null
-          Invoke-WebRequest -Uri 'https://sdmntprcentralindia.oaiusercontent.com/files/00000000-5168-8208-ae6b-5936316a650d/raw?se=2026-10-09T04%3A51%3A49Z&sp=r&sv=2026-02-06&sr=b&scid=ca01233b-fc5d-526b-ba3d-d29d93d1517f&skoid=f2622f62-3126-45cd-85e0-0bc840c3afdc&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-09T04%3A17%3A41Z&ske=2026-10-10T04%3A17%3A41Z&sks=b&skv=2026-02-06&sig=JobByaa/TIWeTeHxZXRKzXtJ9Sw%2B72uUbFGpmd/sBtc%3D' -OutFile assets.zip -TimeoutSec 150
-          Expand-Archive -LiteralPath assets.zip -DestinationPath assets -Force
-          $seed='assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt'
-          if(-not (Test-Path $seed)) {throw 'Seed absent'}
-          "Seed: $((Get-Item $seed).Length) bytes" | Set-Content report/status.txt
-      - name: Install official HONOR editor
-        shell: pwsh
+          Invoke-WebRequest -Uri 'https://sdmntprcentralindia.oaiusercontent.com/files/00000000-20c0-8208-833b-2dee7d65d453/raw?se=2026-10-09T04%3A59%3A03Z&sp=r&sv=2026-02-06&sr=b&scid=34a0fd90-5dee-5925-8c7f-119f65b40a20&skoid=f2622f62-3126-45cd-85e0-0bc840c3afdc&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-09T01%3A20%3A34Z&ske=2026-10-10T01%3A20%3A34Z&sks=b&skv=2026-02-06&sig=3rvD0DvxifYIka7%2BJ6NW/ejXa8xNo2din7CEW/eD0Fk%3D' -OutFile assets.zip -TimeoutSec 150
+          Expand-Archive assets.zip -DestinationPath assets -Force
+          if(-not (Test-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt')) {throw 'Seed missing'}
+          "Assets OK" | Out-File report/status.txt
+      - name: Install HONOR theme editor and CDP driver
         run: |
           $ErrorActionPreference='Stop'
-          Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile editor-install.exe -TimeoutSec 600
-          $i=Start-Process -FilePath "$pwd/editor-install.exe" -ArgumentList '/S' -PassThru
-          if(-not $i.WaitForExit(200000)) {
-            'Installer process timed out; checking installed app' | Add-Content report/status.txt
-            Stop-Process -Id $i.Id -Force -ErrorAction SilentlyContinue
-          } else {
-            "Installer exit: $($i.ExitCode)" | Add-Content report/status.txt
-          }
-          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
-          if(-not (Test-Path $exe)) {throw 'Installed editor executable missing'}
-          "Editor: $exe" | Add-Content report/status.txt
-      - name: Import in real GUI and open Export
-        shell: pwsh
+          Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile setup.exe -TimeoutSec 600
+          $sig=Get-AuthenticodeSignature setup.exe
+          "Installer SHA256 $((Get-FileHash setup.exe -Algorithm SHA256).Hash); signature $($sig.Status)" | Add-Content report/status.txt
+          $p=Start-Process "$pwd/setup.exe" -ArgumentList '/S' -PassThru
+          if(-not $p.WaitForExit(200000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")){throw 'Editor missing'}
+          npm install --no-save playwright@1.55.1 | Out-File report/npm.txt
+      - name: Import and inspect export form
         run: |
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
@@ -44,93 +39,116 @@ jobs:
           Add-Type -AssemblyName UIAutomationTypes
           Add-Type @'
           using System;using System.Runtime.InteropServices;
-          public class HNMouse {
+          public class Clicker {
             [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
-            [DllImport("user32.dll")] public static extern void mouse_event(int f,int dx,int dy,int z,int extra);
+            [DllImport("user32.dll")] public static extern void mouse_event(int flags,int dx,int dy,int data,int extra);
           }
           '@
-          function Snap([string]$file) {
-            $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
-            $g=[System.Drawing.Graphics]::FromImage($bm)
-            $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
-            $bm.Save("report/$file.png",[System.Drawing.Imaging.ImageFormat]::Png)
-            $g.Dispose();$bm.Dispose()
-          }
-          function Click([int]$x,[int]$y){
-            [HNMouse]::SetCursorPos($x,$y)|Out-Null
-            [HNMouse]::mouse_event(2,0,0,0,0)
+          function Click([int]$x,[int]$y) {
+            [Clicker]::SetCursorPos($x,$y)|Out-Null
+            [Clicker]::mouse_event(2,0,0,0,0)
             Start-Sleep -Milliseconds 180
-            [HNMouse]::mouse_event(4,0,0,0,0)
+            [Clicker]::mouse_event(4,0,0,0,0)
           }
-          function DumpWindows([string]$label){
-            $root=[System.Windows.Automation.AutomationElement]::RootElement
-            $wins=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
-            foreach($w in $wins){
-              try {
-                $p=$w.Current
-                if($p.Name -or $p.ClassName){
-                  "$($p.Name) :: $($p.ClassName) :: $($p.ControlType.ProgrammaticName) :: $($p.BoundingRectangle.ToString())" | Out-File -Append "report/ui_$label.txt"
-                }
-              }catch{}
-            }
+          function Snapshot([string]$name) {
+            $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+            $g=[System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+            $bmp.Save("report/$name.png",[System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose();$bmp.Dispose()
           }
           $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
-          Start-Process -FilePath $exe | Out-Null
-          Start-Sleep -Seconds 23
-          Snap '01_open'
+          Start-Process $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*') | Out-Null
+          Start-Sleep -Seconds 22
           Click 140 554
           Start-Sleep -Seconds 5
           $src=(Resolve-Path 'assets/06_Import_Seed_Optional/GitHub_R02_Seed.hnt').Path
           [System.Windows.Forms.SendKeys]::SendWait($src)
-          Start-Sleep -Milliseconds 400
           [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
           Start-Sleep -Seconds 8
-          Snap '02_import_save_dialog'
           Click 780 439
           Start-Sleep -Seconds 42
-          Snap '03_imported_project'
-          DumpWindows 'imported'
+          Snapshot '01_Imported_Project'
           Click 575 63
-          Start-Sleep -Seconds 9
-          Snap '04_export_dialog'
-          DumpWindows 'export'
-          # Capture all launched Windows and dialog info
-          Get-Process | Where-Object {$_.ProcessName -match 'HnTheme'} | Select-Object Name,Id,Path,MainWindowTitle | Format-Table | Out-String | Add-Content report/status.txt
-          $top=[System.Windows.Automation.AutomationElement]::RootElement
-          $children=$top.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
-          foreach($el in $children) {
-            try {
-              if($el.Current.Name -match 'Honor|Save|Export|Theme|Desktop|保存|导出') {
-                "Window $($el.Current.Name)" | Out-File -Append report/ui_details.txt
-                $nodes=$el.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
-                $m=[Math]::Min($nodes.Count,500)
-                for($k=0;$k -lt $m;$k++){
-                  $t=$nodes[$k].Current
-                  "$k|$($t.Name)|$($t.ClassName)|$($t.ControlType.ProgrammaticName)|$($t.AutomationId)|$($t.BoundingRectangle.ToString())" | Out-File -Append report/ui_details.txt
+          Start-Sleep -Seconds 5
+          Snapshot '02_Export_Form'
+          try {
+            $v=Invoke-RestMethod -Uri 'http://127.0.0.1:9222/json/list' -TimeoutSec 3
+            $v | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 report/CDP_targets.json
+            'CDP available' | Add-Content report/status.txt
+          } catch {
+            'CDP not available: '+$_.Exception.Message | Add-Content report/status.txt
+          }
+          @'
+          const fs=require('fs');
+          const { chromium }=require('playwright');
+          (async()=>{
+            try{
+              const b=await chromium.connectOverCDP('http://127.0.0.1:9222');
+              const pages=b.contexts().flatMap(x=>x.pages());
+              fs.writeFileSync('report/cdp_pages.json',JSON.stringify(await Promise.all(pages.map(async p=>({url:p.url(),title:await p.title().catch(()=>'' )}))),null,2));
+              const p=pages.find(x=>x.url().includes('file://')||x.url().includes('localhost'))||pages[0];
+              if(!p) throw new Error('no CDP page');
+              fs.writeFileSync('report/cdp_body_before.txt',(await p.locator('body').innerText()).slice(0,30000));
+              fs.writeFileSync('report/cdp_inputs_before.json',JSON.stringify(await p.locator('input,select,textarea').evaluateAll(ns=>ns.map(n=>({tag:n.tagName,html:n.outerHTML.slice(0,600),value:n.value,rect:(()=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()}))),null,2));
+              await p.mouse.click(286,258);
+              await p.waitForTimeout(1200);
+              await p.screenshot({path:'report/03_System_Version_Options.png'});
+              fs.writeFileSync('report/cdp_body_version_options.txt',(await p.locator('body').innerText()).slice(0,35000));
+              const options=['MagicOS 10.0','MagicOS10.0','MagicOS 10','MagicOS10','10.0'];
+              for(const label of options){
+                const candidates=p.getByText(label,{exact:true});
+                if((await candidates.count())>0 && await candidates.last().isVisible()){
+                  await candidates.last().click({timeout:1800});
+                  fs.appendFileSync('report/status.txt','Selected system version '+label+'\n');
+                  break;
                 }
               }
-            }catch{}
+              await p.screenshot({path:'report/04_Version_Selected.png'});
+              const inputs=await p.locator('input').evaluateAll(ns=>ns.map(n=>({value:n.value,disabled:n.disabled,readonly:n.readOnly,html:n.outerHTML.slice(0,500),rect:(()=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()})));
+              fs.writeFileSync('report/cdp_inputs_after.json',JSON.stringify(inputs,null,2));
+              fs.writeFileSync('report/cdp_body_before_submit.txt',(await p.locator('body').innerText()).slice(0,30000));
+              await p.mouse.click(899,623);
+              await p.waitForTimeout(8000);
+              await p.screenshot({path:'report/05_After_Export_Confirm.png'});
+              fs.writeFileSync('report/cdp_body_after_submit.txt',(await p.locator('body').innerText()).slice(0,30000));
+              fs.writeFileSync('report/cdp_inputs_after_submit.json',JSON.stringify(await p.locator('input').evaluateAll(ns=>ns.map(n=>({value:n.value,html:n.outerHTML.slice(0,350)}))),null,2));
+              await b.close();
+            }catch(e){fs.writeFileSync('report/cdp_error.txt',String(e.stack||e));process.exitCode=0;}
+          })();
+          '@ | Set-Content -Encoding UTF8 cdp.js
+          node cdp.js
+          Start-Sleep -Seconds 6
+          Snapshot '06_After_CDP_Work'
+          $root=[System.Windows.Automation.AutomationElement]::RootElement
+          $wins=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+          foreach($w in $wins){
+            try{"$($w.Current.Name)|$($w.Current.ClassName)" | Add-Content report/windows.txt}catch{}
           }
-          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory | Select-Object -ExpandProperty FullName | Add-Content report/status.txt
-          Get-ChildItem export -File -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Add-Content report/status.txt
-      - name: Preserve actual converted project from official editor
+      - name: Collect officially exported files and project backup
         if: always()
-        shell: pwsh
         run: |
-          $workspace="$env:APPDATA/HnThemeEditor/workspace"
-          $proj=Get-ChildItem $workspace -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -match 'GitHub_R02_Seed'} | Select-Object -First 1
-          if($proj){
-            "Imported project found: $($proj.FullName)" | Add-Content report/status.txt
-            Compress-Archive -Path $proj.FullName -DestinationPath report/HONOR_EDITOR_IMPORTED_PROJECT.zip -CompressionLevel Optimal
-            "Imported project archive bytes: $((Get-Item report/HONOR_EDITOR_IMPORTED_PROJECT.zip).Length)" | Add-Content report/status.txt
+          $w="$env:APPDATA/HnThemeEditor/workspace"
+          $proj=Get-ChildItem $w -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -like 'GitHub_R02_Seed*'} | Select-Object -First 1
+          if($proj){"Imported project found: $($proj.FullName)" | Add-Content report/status.txt}
+          $files=@()
+          $dirs=@("$env:USERPROFILE/Desktop","$env:USERPROFILE/Documents","$env:USERPROFILE/Downloads","$env:APPDATA/HnThemeEditor",$pwd.Path)
+          foreach($d in $dirs){
+            if(Test-Path $d){$files+=Get-ChildItem $d -Recurse -Include '*.hnt' -File -ErrorAction SilentlyContinue}
           }
-          Get-ChildItem "$env:USERPROFILE" -Recurse -Filter '*.hnt' -ErrorAction SilentlyContinue | Where-Object {$_.FullName -notlike '*assets*'} | Select-Object FullName,Length | Out-File report/all_generated_hnt_files.txt
-      - name: Export test diagnostics
+          $files=$files|Sort-Object -Property FullName -Unique
+          $files|Select-Object FullName,Length|Format-Table|Out-String|Add-Content report/status.txt
+          foreach($file in $files){
+            if($file.FullName -like '*assets*'){continue}
+            $destination=Join-Path 'report' ('EXPORT_'+$file.Name)
+            Copy-Item $file.FullName $destination -Force -ErrorAction SilentlyContinue
+          }
+      - name: Upload GUI report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-GUI-Export-Qasioun-Report
+          name: HONOR-Official-Editor-MagicOS10-Export-Test
           path: report/
           if-no-files-found: warn
           retention-days: 7
