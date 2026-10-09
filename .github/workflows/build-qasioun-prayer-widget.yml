@@ -86,7 +86,7 @@ jobs:
           unzip -t release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | tail -n 1
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "package: name='com.sarf.qasioun.prayer'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "versionName='0.3.0-syria-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "versionName='0.4.0-compass-widget-beta'"
           unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -E 'res/font/noto_kufi_arabic_(bold|regular)'
           unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F 'ic_launcher.webp'
           sha256sum release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk > release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk.sha256
