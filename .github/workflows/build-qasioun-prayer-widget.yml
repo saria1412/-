@@ -22,7 +22,7 @@ jobs:
       - name: Extract app project
         run: |
           mkdir -p QasiounPrayer
-          echo '9601d086dc304ea301a498bb301cdfdb78cf5a1daf8035ca44192861949cd84c  QasiounPrayer_Source.zip' | sha256sum -c -
+          echo '69c95e5aa11188db948f0622f69864b02061d2a9b1765aa36ccc7c7a11100fd6  QasiounPrayer_Source.zip' | sha256sum -c -
           unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
           test -s QasiounPrayer/app/src/main/AndroidManifest.xml
       - name: Download verified CC0 Adhan
