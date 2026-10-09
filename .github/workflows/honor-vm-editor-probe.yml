@@ -1,174 +1,119 @@
-name: HONOR Qasioun Fresh MagicOS 8+ Theme
+name: HONOR Qasioun MagicOS10 Fresh Template
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
     paths: ['.github/workflows/honor-vm-editor-probe.yml']
 permissions:
-  actions: read
   contents: read
+  actions: read
 jobs:
-  theme-build:
+  create:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 18
     steps:
-      - name: Restore Qasioun design assets from prior official project
+      - name: Restore design project inputs
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force report,source | Out-Null
           gh run download 37885474600 --repo 'saria1412/-' --name 'HONOR-GUI-Export-Qasioun-Report' --dir source
           Expand-Archive source/HONOR_EDITOR_IMPORTED_PROJECT.zip -DestinationPath source/imported -Force
-          $existing=Get-ChildItem source/imported -Directory| Where-Object {$_.Name -like 'GitHub_R02_Seed*'} | Select-Object -First 1
-          if(-not $existing){throw 'Missing source project'}
-          "Source project: $($existing.FullName)"|Out-File report/source_project.txt
-      - name: Install official HONOR editor and Python images support
+          $a=Get-ChildItem source/imported -Directory | Where-Object {$_.Name -like 'GitHub_R02_Seed*'} |Select-Object -First 1
+          if(-not $a){throw 'Missing source theme'}
+          "SOURCE=$($a.FullName)" | Out-File report/source_path.txt
+      - name: Install official editor
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile setup.exe -TimeoutSec 600
           $p=Start-Process "$pwd/setup.exe" -ArgumentList '/S' -PassThru
-          if(-not $p.WaitForExit(190000)) {Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
-          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor install failed'}
+          if(-not $p.WaitForExit(200000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+          if(-not(Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")){throw 'HONOR editor missing'}
           npm install --no-save playwright@1.55.1 | Out-File report/npm.txt
-          python -m pip install Pillow --disable-pip-version-check -q
-      - name: Create new MagicOS 8 theme using official GUI
+      - name: Create actual new MagicOS template
         shell: pwsh
         run: |
-          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
-          Start-Process $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*')|Out-Null
-          Start-Sleep -Seconds 22
+          $ErrorActionPreference='Stop'
+          Start-Process "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe" -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*') | Out-Null
+          Start-Sleep -Seconds 18
           @'
-          const {chromium}=require('playwright'),fs=require('fs');
+          const fs=require('fs'),{chromium}=require('playwright');
           (async()=>{
+            let browser;
             try{
-              const b=await chromium.connectOverCDP('http://127.0.0.1:9222');
-              const p=b.contexts().flatMap(c=>c.pages()).find(q=>q.url().startsWith('file:'));
-              if(!p) throw Error('HONOR GUI absent');
-              await p.screenshot({path:'report/01_welcome.png'});
+              browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
+              const p=browser.contexts().flatMap(c=>c.pages()).find(x=>x.url().startsWith('file:'));
+              if(!p)throw Error('Electron page missing');
               await p.getByText('New',{exact:true}).first().evaluate(n=>n.click());
-              await p.waitForTimeout(1300);
-              await p.screenshot({path:'report/02_new_dialog.png'});
-              fs.writeFileSync('report/new_text.txt',(await p.locator('body').innerText()).slice(0,20000));
-              const inp=await p.locator('input').evaluateAll(ns=>ns.map((n,i)=>({i,value:n.value,placeholder:n.placeholder,outerHTML:n.outerHTML.slice(0,500),rect:(()=>{let r=n.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}})()})));
-              fs.writeFileSync('report/new_inputs.json',JSON.stringify(inp,null,2));
-              const candidates=inp.filter(x=>x.rect.y>100 && x.rect.y<380 && x.rect.w>180).sort((a,b)=>a.rect.y-b.rect.y);
-              fs.writeFileSync('report/name_fields.json',JSON.stringify(candidates,null,2));
-              if(candidates.length<2) throw Error('Theme/designer input fields not found');
-              await p.locator('input').nth(candidates[0].i).fill('Syria Qasioun Morning');
-              await p.locator('input').nth(candidates[1].i).fill('Qasioun Theme Studio');
-              await p.screenshot({path:'report/03_filled_new_dialog.png'});
-              const next=p.getByText('Next',{exact:true}).last();
-              await next.evaluate(n=>n.click());
-              await p.waitForTimeout(13000);
-              await p.screenshot({path:'report/04_after_next.png'});
-              fs.writeFileSync('report/after_next_text.txt',(await p.locator('body').innerText()).slice(0,32000));
-              const maybeCreate=p.getByText('Create',{exact:true}).last();
-              if((await maybeCreate.count()) && (await maybeCreate.isVisible())){
-                await maybeCreate.evaluate(n=>n.click());
-                await p.waitForTimeout(10000);
-                await p.screenshot({path:'report/05_after_create.png'});
+              await p.waitForTimeout(1200);
+              await p.locator('input[placeholder="Enter the default resource name"]').fill('Syria Qasioun Morning');
+              await p.locator('input[placeholder="Enter the designer\'s name"]').fill('Qasioun Theme Studio');
+              await p.locator('textarea').first().fill('Morning Damascus and Mount Qasioun - Syrian flag. No embedded text.');
+              await p.screenshot({path:'report/01_new_form.png'});
+              const versions={};
+              const versionInput=p.locator('input[placeholder="Select"]').first();
+              await versionInput.evaluate(n=>n.click());
+              await p.waitForTimeout(600);
+              versions.body=(await p.locator('body').innerText()).slice(0,25000);
+              await p.screenshot({path:'report/02_versions.png'});
+              const choices=['MagicOS 10.0','MagicOS 10','MagicOS 9.0','MagicOS 9','MagicOS 8.0'];
+              let selected='';
+              for(const label of choices){
+                const options=p.getByText(label,{exact:true});
+                let count=await options.count();
+                for(let k=count-1;k>=0;k--){
+                  if(await options.nth(k).isVisible()){
+                    await options.nth(k).evaluate(n=>n.click());
+                    selected=label;break;
+                  }
+                }
+                if(selected)break;
               }
-              await b.close();
-            } catch(e){fs.writeFileSync('report/create_error.txt',String(e.stack||e));}
-          })();
-          '@ | Set-Content -Encoding UTF8 create_theme.js
-          node create_theme.js
-          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory -ErrorAction SilentlyContinue|Select-Object Name,FullName |Format-Table|Out-String|Out-File report/new_projects.txt
-      - name: Insert Qasioun assets into native MagicOS template
-        shell: pwsh
-        run: |
-          @'
-          import os,sys,glob,shutil,json
-          from PIL import Image,ImageOps
-          source = glob.glob('source/imported/GitHub_R02_Seed*')[0]
-          workspace = os.path.join(os.environ['APPDATA'],'HnThemeEditor','workspace')
-          projects = [x for x in glob.glob(os.path.join(workspace,'*')) if os.path.isdir(x) and os.path.basename(x)!='.design']
-          target = next((p for p in projects if 'Syria_Qasioun' in os.path.basename(p) or 'Qasioun' in os.path.basename(p)), None)
-          log={'source':source,'projects':projects,'target':target,'copied':[]}
-          if not target:
-              open('report/copy_status.json','w').write(json.dumps(log,indent=2));sys.exit(0)
-          for d in ['icons','wallpaper','preview']:
-              src=os.path.join(source,d)
-              dst=os.path.join(target,d)
-              os.makedirs(dst,exist_ok=True)
-              for base,dirs,files in os.walk(src):
-                  rel=os.path.relpath(base,src)
-                  dd=os.path.join(dst,rel);os.makedirs(dd,exist_ok=True)
-                  for f in files:
-                      s=os.path.join(base,f);t=os.path.join(dd,f)
-                      if d=='wallpaper' and f.lower().endswith(('.jpg','.jpeg','.png')):
-                          size=(1080,2160) if f.startswith('unlock') else (2160,2160)
-                          im=Image.open(s).convert('RGB')
-                          im=ImageOps.fit(im,size,Image.Resampling.LANCZOS,centering=(0.5,0.45))
-                          q=87
-                          while q>=58:
-                              im.save(t,'JPEG',quality=q,optimize=True,subsampling=0)
-                              if os.path.getsize(t)<990000:break
-                              q-=5
-                      else:
-                          shutil.copy2(s,t)
-                      log['copied'].append(os.path.relpath(t,target))
-          open('report/copy_status.json','w',encoding='utf8').write(json.dumps(log,indent=2))
-          '@|Set-Content -Encoding UTF8 inject.py
-          python inject.py
-      - name: Export theme through HONOR application
-        shell: pwsh
-        run: |
-          @'
-          const {chromium}=require('playwright'),fs=require('fs');
-          (async()=>{
-            try{
-              const b=await chromium.connectOverCDP('http://127.0.0.1:9222');
-              const p=b.contexts().flatMap(c=>c.pages()).find(q=>q.url().startsWith('file:'));
-              if(!p)throw Error('Editor closed');
-              await p.reload({waitUntil:'domcontentloaded'});
-              await p.waitForTimeout(5000);
-              await p.screenshot({path:'report/06_after_asset_reload.png'});
-              fs.writeFileSync('report/reload_text.txt',(await p.locator('body').innerText()).slice(0,30000));
+              versions.selected=selected;
+              fs.writeFileSync('report/versions.json',JSON.stringify(versions,null,2));
+              await p.getByText('Next',{exact:true}).last().evaluate(n=>n.click());
+              await p.waitForTimeout(1100);
+              await p.screenshot({path:'report/03_template_choice.png'});
+              fs.writeFileSync('report/03_template_text.txt',(await p.locator('body').innerText()).slice(0,30000));
+              const noTemplate=p.getByText('No template',{exact:true});
+              if((await noTemplate.count())>0)await noTemplate.last().evaluate(n=>n.click());
+              const confirm=p.getByText('Confirm',{exact:true}).last();
+              if(!(await confirm.count()))throw Error('Confirm not found in template selection');
+              await confirm.evaluate(n=>n.click());
+              await p.waitForTimeout(14500);
+              await p.screenshot({path:'report/04_after_confirm.png'});
+              fs.writeFileSync('report/04_after_confirm_text.txt',(await p.locator('body').innerText()).slice(0,30000));
               const exp=p.getByText('Export',{exact:true}).first();
-              if(!(await exp.count()))throw Error('Not in theme editor/export absent');
-              await exp.evaluate(n=>n.click());
-              await p.waitForTimeout(1800);
-              await p.screenshot({path:'report/07_export_form.png'});
-              fs.writeFileSync('report/export_form_text.txt',(await p.locator('body').innerText()).slice(0,30000));
-              const ok=p.getByText('OK',{exact:true}).last();
-              if(!(await ok.count()))throw Error('Export confirmation not found');
-              await ok.evaluate(n=>n.click());
-              await p.waitForTimeout(10000);
-              await p.screenshot({path:'report/08_after_ok.png'});
-              fs.writeFileSync('report/after_ok_text.txt',(await p.locator('body').innerText()).slice(0,30000));
-              await b.close();
-            }catch(e){fs.writeFileSync('report/export_error.txt',String(e.stack||e));}
+              fs.writeFileSync('report/export_button_count.txt',String(await exp.count()));
+              if(!(await exp.count()))throw Error('Editor project was not opened after creation');
+              fs.writeFileSync('report/RESULT.txt','CREATED PROJECT IN OFFICIAL EDITOR '+selected);
+            }catch(e){fs.writeFileSync('report/ERROR.txt',String(e.stack||e));process.exitCode=1;}
+            finally{if(browser)await browser.close()}
           })();
-          '@ | Set-Content -Encoding UTF8 export.js
-          node export.js
-          Add-Type -AssemblyName System.Windows.Forms
-          [System.Windows.Forms.SendKeys]::SendWait((Join-Path $pwd 'Syria_Qasioun_Official_8.hnt'))
-          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-          Start-Sleep 12
-      - name: Capture exported package and editable project
+          '@ | Set-Content -Encoding UTF8 create_honor.js
+          node create_honor.js
+      - name: Capture project files and screenshots
         if: always()
         shell: pwsh
         run: |
-          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory -ErrorAction SilentlyContinue|Select-Object Name,FullName|Format-Table|Out-String|Out-File report/final_projects.txt
-          $dirs=@("$env:USERPROFILE/Desktop","$env:USERPROFILE/Documents","$env:USERPROFILE/Downloads","$env:APPDATA/HnThemeEditor",$pwd.Path)
-          $found=@()
-          foreach($d in $dirs){if(Test-Path $d){$found+=Get-ChildItem $d -Filter '*.hnt' -File -Recurse -ErrorAction SilentlyContinue}}
-          $found=$found|Sort-Object FullName -Unique
-          $found|Select-Object FullName,Length|Format-Table|Out-String|Out-File report/final_hnt_inventory.txt
-          $n=0
-          foreach($a in $found){
-            if($a.Length -lt 50000 -or $a.FullName -match 'source\\imported'){continue}
-            $n++
-            Copy-Item $a.FullName "report/official_export_$n.hnt" -ErrorAction SilentlyContinue
+          $workspace="$env:APPDATA/HnThemeEditor/workspace"
+          $projects=Get-ChildItem $workspace -Directory -ErrorAction SilentlyContinue|Where-Object {$_.Name -ne '.design'}
+          $projects|Select-Object Name,FullName|Format-Table|Out-String|Set-Content report/projects.txt
+          foreach($proj in $projects){
+            if($proj.Name -like '*Qasioun*'){
+              Compress-Archive -Path $proj.FullName -DestinationPath report/HONOR_FRESH_MAGICOS_PROJECT.zip -CompressionLevel Optimal
+              "PROJECT ARCHIVE $((Get-Item report/HONOR_FRESH_MAGICOS_PROJECT.zip).Length)"|Add-Content report/projects.txt
+              Get-ChildItem $proj.FullName -Recurse -File|Select-Object -First 600 -ExpandProperty FullName|Out-File report/project_files.txt
+              break
+            }
           }
-      - name: Upload evidence and official export
+      - name: Export diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Qasioun-Original-MagicOS8-Project-Build
+          name: HONOR-Qasioun-Template-Creation-Verified
           path: report/
           if-no-files-found: warn
           retention-days: 7
