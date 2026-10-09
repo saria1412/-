@@ -9,7 +9,7 @@ permissions:
 jobs:
   create:
     runs-on: windows-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
       - name: Restore design project inputs
         shell: pwsh
@@ -94,26 +94,131 @@ jobs:
           })();
           '@ | Set-Content -Encoding UTF8 create_honor.js
           node create_honor.js
-      - name: Capture project files and screenshots
+      - name: Integrate Qasioun wallpapers and custom icons in HONOR project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install Pillow --disable-pip-version-check -q
+          @'
+          from pathlib import Path
+          from PIL import Image,ImageOps
+          import os,json,shutil,io
+          src=next(Path('source/imported').glob('GitHub_R02_Seed*'))
+          workspace=Path(os.environ['APPDATA'])/'HnThemeEditor'/'workspace'
+          dst=next(workspace.glob('SyriaQasiounMorning_*'),None)
+          if not dst:
+              raise RuntimeError('New project folder missing; refusing false success')
+          report={'source':str(src),'target':str(dst),'wallpapers':[],'icons':[],'previews':[]}
+          def jpeg_image(source,target,size):
+              im=Image.open(source).convert('RGB')
+              im=ImageOps.fit(im,size,Image.Resampling.LANCZOS,centering=(0.50,0.43))
+              for quality in range(92,53,-5):
+                  im.save(target,'JPEG',quality=quality,optimize=True,subsampling=0)
+                  if target.stat().st_size < 960000:break
+              if target.stat().st_size > 1000000:raise ValueError('Image >1MB: '+str(target))
+              return {'size':list(im.size),'bytes':target.stat().st_size}
+          for name,dim in [('unlock_wallpaper_0.jpg',(1080,2160)),('home_wallpaper_0.jpg',(2160,2160)),('home_dark_wallpaper_0.jpg',(2160,2160))]:
+              inp=src/'wallpaper'/name
+              dst_img=dst/'wallpaper'/name
+              dst_img.parent.mkdir(parents=True,exist_ok=True)
+              if not inp.exists():raise FileNotFoundError(str(inp))
+              meta=jpeg_image(inp,dst_img,dim)
+              report['wallpapers'].append({'file':name,**meta})
+          # Preserve MagicOS 8 structure while replacing the matching launchers
+          for icon in (src/'icons').glob('*.png'):
+              target=dst/'icons'/icon.name
+              if target.exists():
+                  shutil.copy2(icon,target)
+                  report['icons'].append(icon.name)
+          # Fresh template previews need to reflect the new wallpaper, not stock illustrations
+          for name,source_name in [('preview_unlock_0.jpg','unlock_wallpaper_0.jpg'),('cover.jpg','unlock_wallpaper_0.jpg'),('preview_home_0.jpg','home_wallpaper_0.jpg')]:
+              preview=dst/'preview'/name
+              if preview.exists():
+                  with Image.open(preview) as r:
+                      dims=r.size
+                  meta=jpeg_image(src/'wallpaper'/source_name,preview,dims)
+                  report['previews'].append({'file':name,**meta})
+          (Path('report')/'ASSET_INJECTION_SUCCESS.json').write_text(json.dumps(report,indent=2),encoding='utf8')
+          print('Injected',len(report['wallpapers']),'wallpapers,',len(report['icons']),'icons')
+          '@ | Set-Content -Encoding UTF8 inject_assets.py
+          python inject_assets.py
+      - name: Export assembled theme through real HONOR editor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          const fs=require('fs'),{chromium}=require('playwright');
+          (async()=>{
+            let b;
+            try{
+              b=await chromium.connectOverCDP('http://127.0.0.1:9222');
+              const p=b.contexts().flatMap(c=>c.pages()).find(x=>x.url().startsWith('file:'));
+              if(!p)throw Error('HONOR editor page unavailable');
+              const name=await p.locator('body').innerText();
+              fs.writeFileSync('report/05_editor_state.txt',name.slice(0,35000));
+              const btn=p.getByText('Export',{exact:true}).first();
+              if(!(await btn.count()))throw Error('No Export button (project not open)');
+              await btn.evaluate(n=>n.click());
+              await p.waitForTimeout(1300);
+              await p.screenshot({path:'report/06_export_dialog.png'});
+              fs.writeFileSync('report/06_export_dialog_text.txt',(await p.locator('body').innerText()).slice(0,40000));
+              const ok=p.getByText('OK',{exact:true}).last();
+              if(!(await ok.count()))throw Error('Export modal lacked OK');
+              await ok.evaluate(n=>n.click());
+              await p.waitForTimeout(3500);
+              await p.screenshot({path:'report/07_after_export_ok.png'});
+              fs.writeFileSync('report/07_after_export_text.txt',(await p.locator('body').innerText()).slice(0,35000));
+              fs.writeFileSync('report/export_clicked.txt','YES; waiting for native Save dialog if present');
+            }catch(e){fs.writeFileSync('report/export_error.txt',String(e.stack||e));process.exitCode=1;}
+            finally {if(b)await b.close()}
+          })();
+          '@ | Set-Content -Encoding UTF8 export_honor.js
+          node export_honor.js
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp=New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
+          $g=[System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.X,$bounds.Y,0,0,$bounds.Size)
+          $bmp.Save('report/08_native_save_dialog.png',[System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose();$bmp.Dispose()
+          # If export opened native Save As, enter the full target filename.
+          $full=Join-Path $pwd.Path 'Syria_Qasioun_MagicOS8plus_Official.hnt'
+          [System.Windows.Forms.SendKeys]::SendWait($full)
+          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+          Start-Sleep -Seconds 12
+          $bmp=New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
+          $g=[System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.X,$bounds.Y,0,0,$bounds.Size)
+          $bmp.Save('report/09_after_save.png',[System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose();$bmp.Dispose()
+      - name: Verify genuine generated HNT and preserve completed source
         if: always()
         shell: pwsh
         run: |
           $workspace="$env:APPDATA/HnThemeEditor/workspace"
-          $projects=Get-ChildItem $workspace -Directory -ErrorAction SilentlyContinue|Where-Object {$_.Name -ne '.design'}
-          $projects|Select-Object Name,FullName|Format-Table|Out-String|Set-Content report/projects.txt
-          foreach($proj in $projects){
-            if($proj.Name -like '*Qasioun*'){
-              Compress-Archive -Path $proj.FullName -DestinationPath report/HONOR_FRESH_MAGICOS_PROJECT.zip -CompressionLevel Optimal
-              "PROJECT ARCHIVE $((Get-Item report/HONOR_FRESH_MAGICOS_PROJECT.zip).Length)"|Add-Content report/projects.txt
-              Get-ChildItem $proj.FullName -Recurse -File|Select-Object -First 600 -ExpandProperty FullName|Out-File report/project_files.txt
-              break
-            }
+          $project=Get-ChildItem $workspace -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -like 'SyriaQasiounMorning_*'} | Select-Object -First 1
+          if($project){
+            $images=Get-ChildItem "$($project.FullName)/wallpaper" -Filter '*.jpg' -File -ErrorAction SilentlyContinue
+            $images | Select-Object Name,Length | Format-Table | Out-String | Set-Content report/project_wallpapers.txt
+            Compress-Archive -Path "$($project.FullName)/description.xml","$($project.FullName)/wallpaper","$($project.FullName)/icons","$($project.FullName)/preview" -DestinationPath report/HONOR_Qasioun_Editor_Assets_R04.zip -CompressionLevel Optimal -Force
+          }
+          $dirs=@("$env:USERPROFILE/Desktop","$env:USERPROFILE/Documents","$env:USERPROFILE/Downloads",$pwd.Path,"$env:APPDATA/HnThemeEditor")
+          $all=@()
+          foreach($dir in $dirs){if(Test-Path $dir){$all += Get-ChildItem $dir -Recurse -File -Filter '*.hnt' -ErrorAction SilentlyContinue}}
+          $all=$all|Sort-Object FullName -Unique
+          $all|Select-Object FullName,Length,LastWriteTime|Format-Table|Out-String|Out-File report/official_hnt_inventory.txt
+          $n=0
+          foreach($item in $all) {
+            if($item.Length -lt 100000 -or $item.FullName -like '*source*'){continue}
+            $n++
+            Copy-Item $item.FullName "report/HONOR_Export_$n.hnt" -Force -ErrorAction SilentlyContinue
           }
       - name: Export diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Qasioun-Template-Creation-Verified
+          name: HONOR-Qasioun-MagicOS-Export-Actual
           path: report/
           if-no-files-found: warn
           retention-days: 7
