@@ -1,8 +1,8 @@
-name: Build Mawaqit Al-Salah v0.3 Syria
+name: Build Mawaqit Al-Salah v0.4 Compass & Widgets
 on:
   push:
     branches:
-      - 'qasioun-prayer-widget-v03-syria'
+      - 'qasioun-prayer-widget-v04-compass'
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,7 +22,7 @@ jobs:
       - name: Verify and extract reviewed Android source
         run: |
           set -euo pipefail
-          echo 'c1d844ad9e3e969391f3f65a90b20a84abd5bc8667b4b2d2d6fdc29e872372bf  QasiounPrayer_Source.zip' | sha256sum -c -
+          echo '05fd0a6c0c4b3a4b276da11d0b64cf7def6fb14e8860ea5b14250b280b417507  QasiounPrayer_Source.zip' | sha256sum -c -
           mkdir -p QasiounPrayer
           unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
           test -s QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/QiblaActivity.java
@@ -53,9 +53,12 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'android:label="مواقيت الصلاة"' QasiounPrayer/app/src/main/AndroidManifest.xml
-          grep -q 'versionCode 3' QasiounPrayer/app/build.gradle
-          grep -q "versionName '0.3.0-syria-beta'" QasiounPrayer/app/build.gradle
+          grep -q 'versionCode 4' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.4.0-compass-widget-beta'" QasiounPrayer/app/build.gradle
           grep -q 't_sunrise' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
+          grep -q 'WidgetCompactProvider' QasiounPrayer/app/src/main/AndroidManifest.xml
+          grep -q 'remapCoordinateSystem' QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/QiblaActivity.java
+          ! grep -q 'سورية  ·  الجامع الأموي' QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/MainActivity.java
           grep -q 'widget_city' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
           ! grep -q 'widget_title' QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
           grep -q 'QiblaActivity' QasiounPrayer/app/src/main/AndroidManifest.xml
@@ -79,20 +82,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk
-          unzip -t release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk | tail -n 1
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk | grep -F "package: name='com.sarf.qasioun.prayer'"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk | grep -F "versionName='0.3.0-syria-beta'"
-          unzip -Z1 release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk | grep -E 'res/font/noto_kufi_arabic_(bold|regular)'
-          unzip -Z1 release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk | grep -F 'ic_launcher.webp'
-          sha256sum release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk > release/Mawaqit_Al_Salah_Syria_Umayyad_v0.3.0_BETA.apk.sha256
+          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk
+          unzip -t release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "package: name='com.sarf.qasioun.prayer'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F "versionName='0.3.0-syria-beta'"
+          unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -E 'res/font/noto_kufi_arabic_(bold|regular)'
+          unzip -Z1 release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk | grep -F 'ic_launcher.webp'
+          sha256sum release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk > release/Mawaqit_Al_Salah_Umayyad_v0.4.0_BETA.apk.sha256
           cp QasiounPrayer/README_AR.md release/README_AR.md
           cp QasiounPrayer/THIRD_PARTY_FONTS_OFL.txt release/Noto_Font_OFL_License.txt
       - name: Publish tested APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mawaqit-Al-Salah-Syria-v03-APK
+          name: Mawaqit-Al-Salah-v04-APK
           path: release/*
           if-no-files-found: error
           retention-days: 14
