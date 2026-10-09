@@ -26,6 +26,7 @@ jobs:
           test -s QasiounPrayer/app/src/main/AndroidManifest.xml
       - name: Download verified CC0 Adhan
         run: |
+          mkdir -p QasiounPrayer/app/src/main/res/raw
           curl --fail --location --retry 3 --retry-delay 2 \
             --user-agent 'QasiounPrayerCI/1.0' \
             'https://upload.wikimedia.org/wikipedia/commons/b/b0/Beautiful_adhan.ogg' \
