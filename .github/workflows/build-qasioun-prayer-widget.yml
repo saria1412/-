@@ -22,6 +22,7 @@ jobs:
       - name: Extract app project
         run: |
           mkdir -p QasiounPrayer
+          echo '9601d086dc304ea301a498bb301cdfdb78cf5a1daf8035ca44192861949cd84c  QasiounPrayer_Source.zip' | sha256sum -c -
           unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
           test -s QasiounPrayer/app/src/main/AndroidManifest.xml
       - name: Download verified CC0 Adhan
@@ -46,6 +47,11 @@ jobs:
       - name: Build APK and lint
         working-directory: QasiounPrayer
         run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print lint diagnostics if a build fails
+        if: failure()
+        run: |
+          f=QasiounPrayer/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B 1 -A 4 -E 'Error:|errors, [0-9]+ warnings' "$f" || true; fi
       - name: Inspect APK signature and manifest
         run: |
           set -euo pipefail
