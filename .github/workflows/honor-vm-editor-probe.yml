@@ -117,19 +117,45 @@ jobs:
                   if target.stat().st_size < 960000:break
               if target.stat().st_size > 1000000:raise ValueError('Image >1MB: '+str(target))
               return {'size':list(im.size),'bytes':target.stat().st_size}
-          for name,dim in [('unlock_wallpaper_0.jpg',(1080,2160)),('home_wallpaper_0.jpg',(2160,2160)),('home_dark_wallpaper_0.jpg',(2160,2160))]:
+          # MagicOS 8.1 references its home images in wallpaper/static, NOT the root.
+          for name,destination,dim in [
+              ('unlock_wallpaper_0.jpg','wallpaper/unlock_wallpaper_0.jpg',(1080,2160)),
+              ('home_wallpaper_0.jpg','wallpaper/static/home_wallpaper_0.jpg',(2160,2160)),
+              ('home_wallpaper_0.jpg','wallpaper/onetake/home_wallpaper_0.jpg',(2160,2160)),
+              ('home_wallpaper_0.jpg','wallpaper/video/home_wallpaper_0.jpg',(2160,2160)),
+              ('home_dark_wallpaper_0.jpg','wallpaper/onetake/home_dark_wallpaper_0.jpg',(2160,2160))
+          ]:
               inp=src/'wallpaper'/name
-              dst_img=dst/'wallpaper'/name
+              dst_img=dst/destination
               dst_img.parent.mkdir(parents=True,exist_ok=True)
               if not inp.exists():raise FileNotFoundError(str(inp))
               meta=jpeg_image(inp,dst_img,dim)
-              report['wallpapers'].append({'file':name,**meta})
+              report['wallpapers'].append({'file':destination,**meta})
+          # Include the dynamic source video in the native video wallpaper resource.
+          video=src/'wallpaper'/'home_video.mp4'
+          if video.exists() and (dst/'wallpaper'/'video').exists():
+              shutil.copy2(video,dst/'wallpaper'/'video'/'home_video.mp4')
+              report['wallpapers'].append({'file':'wallpaper/video/home_video.mp4','bytes':video.stat().st_size})
           # Preserve MagicOS 8 structure while replacing the matching launchers
           for icon in (src/'icons').glob('*.png'):
               target=dst/'icons'/icon.name
               if target.exists():
-                  shutil.copy2(icon,target)
-                  report['icons'].append(icon.name)
+                  original=Image.open(icon).convert('RGBA')
+                  original=original.resize((218,218),Image.Resampling.LANCZOS)
+                  original.save(target,'PNG',optimize=True)
+                  report['icons'].append(str(target.relative_to(dst)))
+                  # MagicOS 8+ uses foreground/background layered icons; update those too.
+                  package_dir=dst/'icons'/icon.stem
+                  fore=package_dir/'foreground.png'
+                  back=package_dir/'background.png'
+                  if fore.exists() and back.exists() and '.' in icon.stem:
+                      canvas=Image.new('RGBA',(294,294),(0,0,0,0))
+                      art=Image.open(icon).convert('RGBA').resize((240,240),Image.Resampling.LANCZOS)
+                      canvas.alpha_composite(art,((294-240)//2,(294-240)//2))
+                      canvas.save(fore,'PNG',optimize=True)
+                      bg=Image.new('RGBA',(294,294),(10,54,45,255))
+                      bg.save(back,'PNG',optimize=True)
+                      report['icons'].extend([str(fore.relative_to(dst)),str(back.relative_to(dst))])
           # Fresh template previews need to reflect the new wallpaper, not stock illustrations
           for name,source_name in [('preview_unlock_0.jpg','unlock_wallpaper_0.jpg'),('cover.jpg','unlock_wallpaper_0.jpg'),('preview_home_0.jpg','home_wallpaper_0.jpg')]:
               preview=dst/'preview'/name
@@ -190,11 +216,46 @@ jobs:
           $g.CopyFromScreen($bounds.X,$bounds.Y,0,0,$bounds.Size)
           $bmp.Save('report/08_native_save_dialog.png',[System.Drawing.Imaging.ImageFormat]::Png)
           $g.Dispose();$bmp.Dispose()
-          # If export opened native Save As, enter the full target filename.
-          $full=Join-Path $pwd.Path 'Syria_Qasioun_MagicOS8plus_Official.hnt'
-          [System.Windows.Forms.SendKeys]::SendWait($full)
-          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-          Start-Sleep -Seconds 12
+          # HONOR opens a Windows SELECT FOLDER dialog, not a Save As filename dialog.
+          # Select the current runner working directory and let HONOR create the HNT file.
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          $didSelect=$false
+          try{
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $winds=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+            foreach($w in $winds){
+              if($w.Current.Name -eq 'Select Folder'){
+                $nodes=$w.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+                foreach($node in $nodes){
+                  if($node.Current.Name -eq 'Select Folder' -and $node.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button){
+                    $invoke=$node.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                    $invoke.Invoke()
+                    $didSelect=$true
+                    break
+                  }
+                }
+              }
+              if($didSelect){break}
+            }
+          }catch{
+            "UIA picker selection error: $($_.Exception.Message)" | Out-File -Append report/folder_pick_log.txt
+          }
+          if(-not $didSelect){
+            Add-Type @'
+          using System;using System.Runtime.InteropServices;
+          public class HonourPointer {
+             [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+             [DllImport("user32.dll")] public static extern void mouse_event(int a,int b,int c,int d,int e);
+          }
+          '@
+            [HonourPointer]::SetCursorPos(445,441)|Out-Null
+            [HonourPointer]::mouse_event(2,0,0,0,0)
+            Start-Sleep -Milliseconds 180
+            [HonourPointer]::mouse_event(4,0,0,0,0)
+          }
+          "Selected folder picker: $didSelect" | Out-File -Append report/folder_pick_log.txt
+          Start-Sleep -Seconds 20
           $bmp=New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
           $g=[System.Drawing.Graphics]::FromImage($bmp)
           $g.CopyFromScreen($bounds.X,$bounds.Y,0,0,$bounds.Size)
