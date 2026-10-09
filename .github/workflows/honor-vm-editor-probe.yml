@@ -1,4 +1,4 @@
-name: HONOR Qasioun Real HNT Export
+name: HONOR Project Open From Local Folder
 on:
   push:
     branches: [honor-qasioun-virtual-editor-20261009]
@@ -7,11 +7,11 @@ permissions:
   contents: read
   actions: read
 jobs:
-  export:
+  open-project:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - name: Restore previously imported HONOR project
+      - name: Restore actual official editor project
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -19,109 +19,96 @@ jobs:
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force report,previous | Out-Null
           gh run download 37885474600 --repo 'saria1412/-' --name 'HONOR-GUI-Export-Qasioun-Report' --dir previous
-          $source='previous/HONOR_EDITOR_IMPORTED_PROJECT.zip'
-          if(-not (Test-Path $source)){throw 'Previous project archive is unavailable'}
-          $workspace="$env:APPDATA/HnThemeEditor/workspace"
-          New-Item -ItemType Directory -Force $workspace | Out-Null
-          Expand-Archive -LiteralPath $source -DestinationPath $workspace -Force
-          Get-ChildItem $workspace -Directory | Select-Object Name,FullName | Format-Table | Out-String | Out-File report/restored_project.txt
-      - name: Install official HnThemeEditor
+          $dest="$env:APPDATA/HnThemeEditor/workspace"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Expand-Archive previous/HONOR_EDITOR_IMPORTED_PROJECT.zip -DestinationPath $dest -Force
+          $proj=Get-ChildItem $dest -Directory | Where-Object {$_.Name -like 'GitHub_R02_Seed*'} | Select-Object -First 1
+          if(-not $proj) {throw 'Theme project missing'}
+          "Project directory: $($proj.FullName)" | Out-File report/project_path.txt
+      - name: Install official theme editor
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'
           Invoke-WebRequest -Uri 'https://contentplatform-drcn.hihonorcdn.com/developerPlatform/HnThemeEditor_2.5.0.exe' -OutFile setup.exe -TimeoutSec 600
-          $sig=Get-AuthenticodeSignature setup.exe
-          'Signature: '+$sig.Status | Out-File report/setup.txt
-          $p=Start-Process "$pwd/setup.exe" -ArgumentList '/S' -PassThru
-          if(-not $p.WaitForExit(200000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
-          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")) {throw 'Editor installation failed'}
-          npm install --no-save playwright@1.55.1 | Out-File report/npm.txt
-      - name: Open imported project in official editor and invoke export
+          $p=Start-Process -FilePath "$pwd/setup.exe" -ArgumentList '/S' -PassThru
+          if(-not $p.WaitForExit(190000)){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
+          if(-not (Test-Path "$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe")){throw 'Editor missing'}
+      - name: Open project folder through GUI
         shell: pwsh
         run: |
-          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
-          Start-Process -FilePath $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*') | Out-Null
-          Start-Sleep -Seconds 25
-          @'
-          const fs=require('fs');
-          const {chromium}=require('playwright');
-          (async()=>{
-            try{
-              const browser=await chromium.connectOverCDP('http://127.0.0.1:9222');
-              const pages=browser.contexts().flatMap(c=>c.pages());
-              const page=pages.find(p=>p.url().startsWith('file:'))||pages[0];
-              if(!page)throw Error('No editor UI');
-              fs.writeFileSync('report/01_home_text.txt',(await page.locator('body').innerText()).slice(0,35000));
-              await page.screenshot({path:'report/01_home.png'});
-              const hasProject=await page.getByText('GitHub_R02_Seed',{exact:false}).count();
-              fs.writeFileSync('report/project_match.txt',String(hasProject));
-              if(hasProject){
-                const item=page.getByText('GitHub_R02_Seed',{exact:false}).last();
-                await item.evaluate(n=>n.click());
-                await page.waitForTimeout(10000);
-              }else{
-                const open=page.getByText('Open',{exact:true}).first();
-                await open.evaluate(n=>n.click());
-                await page.waitForTimeout(1500);
-                fs.writeFileSync('report/no_project.txt','Project card absent; Open dialog should be visible');
-              }
-              await page.screenshot({path:'report/02_after_open_attempt.png'});
-              fs.writeFileSync('report/02_after_open_text.txt',(await page.locator('body').innerText()).slice(0,35000));
-              const exportBtn=page.getByText('Export',{exact:true}).first();
-              if((await exportBtn.count())>0){
-                await exportBtn.evaluate(n=>n.click());
-                await page.waitForTimeout(1800);
-                await page.screenshot({path:'report/03_export_window.png'});
-                fs.writeFileSync('report/03_export_text.txt',(await page.locator('body').innerText()).slice(0,35000));
-                const names=await page.locator('input').evaluateAll(ns=>ns.map(n=>({value:n.value,html:n.outerHTML.slice(0,500)})));
-                fs.writeFileSync('report/03_export_inputs.json',JSON.stringify(names,null,2));
-                const confirm=page.getByText('OK',{exact:true}).last();
-                if((await confirm.count())>0){
-                  await confirm.evaluate(n=>n.click());
-                  await page.waitForTimeout(9000);
-                  await page.screenshot({path:'report/04_after_export_click.png'});
-                  fs.writeFileSync('report/04_after_export_text.txt',(await page.locator('body').innerText()).slice(0,35000));
-                }else fs.writeFileSync('report/missing_OK.txt','OK button not found');
-              }else fs.writeFileSync('report/missing_export.txt','Export control not available');
-              await browser.close();
-            }catch(e){fs.writeFileSync('report/UI_ERROR.txt',String(e.stack||e));}
-          })();
-          '@ | Set-Content -Encoding UTF8 run_export.js
-          node run_export.js
-          Start-Sleep -Seconds 3
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
-          $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
-          $gfx=[System.Drawing.Graphics]::FromImage($bm)
-          $gfx.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
-          $bm.Save('report/05_desktop_after_export.png',[System.Drawing.Imaging.ImageFormat]::Png)
-          $gfx.Dispose();$bm.Dispose()
-          [System.Windows.Forms.SendKeys]::SendWait((Join-Path $pwd 'Syria_Qasioun_HONOR_Official.hnt'))
-          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-          Start-Sleep -Seconds 12
-          $dirs=@($pwd.Path,"$env:USERPROFILE/Desktop","$env:USERPROFILE/Documents","$env:USERPROFILE/Downloads","$env:APPDATA/HnThemeEditor")
-          $all=@()
-          foreach($dir in $dirs){if(Test-Path $dir){$all+=Get-ChildItem $dir -Filter '*.hnt' -File -Recurse -ErrorAction SilentlyContinue}}
-          $all=$all|Sort-Object FullName -Unique
-          $all|Select-Object FullName,Length,LastWriteTime|Format-Table|Out-String|Out-File report/found_hnt_files.txt
-          $i=0
-          foreach($item in $all){
-            if($item.FullName -match 'previous|workspace|node_modules'){continue}
-            if($item.Length -lt 10000){continue}
-            $i++
-            Copy-Item $item.FullName "report/EXP_$i_$($item.Name)" -ErrorAction SilentlyContinue
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;using System.Runtime.InteropServices;
+          public class VMouse{
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(int a,int b,int c,int d,int e);
           }
-          $bm=New-Object System.Drawing.Bitmap $b.Width,$b.Height
-          $gfx=[System.Drawing.Graphics]::FromImage($bm)
-          $gfx.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
-          $bm.Save('report/06_desktop_after_save.png',[System.Drawing.Imaging.ImageFormat]::Png)
-          $gfx.Dispose();$bm.Dispose()
-      - name: Upload export outcome
+          '@
+          function Click([int]$x,[int]$y){
+            [VMouse]::SetCursorPos($x,$y)|Out-Null
+            [VMouse]::mouse_event(2,0,0,0,0)
+            Start-Sleep -Milliseconds 140
+            [VMouse]::mouse_event(4,0,0,0,0)
+          }
+          function Shot([string]$name){
+            $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height
+            $g=[System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.X,$b.Y,0,0,$b.Size)
+            $bmp.Save("report/$name.png",[System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose();$bmp.Dispose()
+          }
+          function DumpUI([string]$label){
+            $root=[System.Windows.Automation.AutomationElement]::RootElement
+            $windows=$root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
+            foreach($win in $windows){
+              try {
+                "$($win.Current.Name)|$($win.Current.ClassName)|$($win.Current.BoundingRectangle)" | Add-Content "report/UI_$label.txt"
+                if($win.Current.Name -match 'Open|Select|Browse|Theme|Folder|Directory|打开'){
+                  $nodes=$win.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+                  for($i=0;$i -lt [Math]::Min($nodes.Count,300);$i++){
+                    $c=$nodes[$i].Current
+                    "$i|$($c.Name)|$($c.AutomationId)|$($c.ControlType.ProgrammaticName)|$($c.BoundingRectangle)"| Add-Content "report/UI_$label.txt"
+                  }
+                }
+              } catch {}
+            }
+          }
+          $exe="$env:LOCALAPPDATA/Programs/HnThemeEditor/HnThemeEditor.exe"
+          Start-Process $exe -ArgumentList @('--remote-debugging-port=9222','--remote-allow-origins=*')|Out-Null
+          Start-Sleep 22
+          Shot '01_home'
+          Click 184 454
+          Start-Sleep 2
+          Shot '02_open_tab'
+          Click 695 569
+          Start-Sleep 3
+          Shot '03_folder_picker'
+          DumpUI 'picker'
+          $dir=(Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory | Where-Object {$_.Name -like 'GitHub_R02_Seed*'}|Select-Object -First 1).FullName
+          [System.Windows.Forms.SendKeys]::SendWait('^l')
+          Start-Sleep -Milliseconds 250
+          [System.Windows.Forms.SendKeys]::SendWait($dir)
+          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+          Start-Sleep 3
+          Shot '04_after_path'
+          DumpUI 'after_path'
+          [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+          Start-Sleep 9
+          Shot '05_after_select_folder'
+          DumpUI 'after_select'
+          Click 575 63
+          Start-Sleep 3
+          Shot '06_after_export_click'
+          DumpUI 'after_export'
+          Get-ChildItem "$env:APPDATA/HnThemeEditor/workspace" -Directory |Select-Object Name,FullName|Format-Table|Out-String|Out-File report/workspace_folders.txt
+      - name: Save GUI exploration results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: HONOR-Qasioun-Official-Export-Output
+          name: HONOR-GUI-Open-Local-Project-Results
           path: report/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
