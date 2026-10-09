@@ -36,6 +36,12 @@ jobs:
             -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
           echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
           test $(stat -c%s QasiounPrayer/app/src/main/res/raw/adhan.ogg) -gt 1000000
+      - name: Fix Android API 30 compatible byte decoding
+        run: |
+          set -euo pipefail
+          p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
+          sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
+          grep -q 'new String(out.toByteArray(), StandardCharsets.UTF_8)' "$p"
       - name: Check requested visual identity and functionality
         run: |
           set -euo pipefail
@@ -57,7 +63,8 @@ jobs:
       - name: Collect Android lint diagnostics if necessary
         if: failure()
         run: |
-          find QasiounPrayer/app/build -iname '*lint*txt' -type f -print -exec tail -n 90 {} \; || true
+          find QasiounPrayer/app/build -iname '*lint*txt' -type f -print -exec grep -n -C2 'Error:' {} \\; || true
+          find QasiounPrayer/app/build -iname '*lint*txt' -type f -print -exec tail -n 35 {} \\; || true
       - name: Verify signed installable APK
         run: |
           set -euo pipefail
