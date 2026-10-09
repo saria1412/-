@@ -42,6 +42,13 @@ jobs:
           p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
           sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
           grep -q 'new String(out.toByteArray(), StandardCharsets.UTF_8)' "$p"
+      - name: Use only supported Android RemoteViews widget elements
+        run: |
+          set -euo pipefail
+          p=QasiounPrayer/app/src/main/res/layout/prayer_widget.xml
+          sed -i 's/<View android:layout_width="match_parent" android:layout_height="1dp"/<ImageView android:layout_width="match_parent" android:layout_height="1dp"/g' "$p"
+          grep -q 'ImageView android:layout_width="match_parent" android:layout_height="1dp"' "$p"
+          ! grep -q '<View ' "$p"
       - name: Check requested visual identity and functionality
         run: |
           set -euo pipefail
@@ -63,8 +70,11 @@ jobs:
       - name: Collect Android lint diagnostics if necessary
         if: failure()
         run: |
-          find QasiounPrayer/app/build -iname '*lint*txt' -type f -print -exec grep -n -C2 'Error:' {} \\; || true
-          find QasiounPrayer/app/build -iname '*lint*txt' -type f -print -exec tail -n 35 {} \\; || true
+          p=QasiounPrayer/app/build/reports/lint-results-debug.txt
+          if test -f "$p"; then
+            grep -n -B2 -A4 'Error:' "$p" || true
+            tail -n 35 "$p"
+          fi
       - name: Verify signed installable APK
         run: |
           set -euo pipefail
