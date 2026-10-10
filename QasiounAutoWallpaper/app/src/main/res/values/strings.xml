@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="app_name">قاسيون | صباح ومساء</string>
-  <string name="wallpaper_name">قاسيون — خلفية النهار والليل</string>
-  <string name="wallpaper_desc">تبديل تلقائي لخلفية قاسيون مع الوضع الداكن لنظام HONOR</string>
+  <string name="app_name">قاسيون | شروق وغروب</string>
+  <string name="wallpaper_name">قاسيون — النهار والليل تلقائيًا</string>
+  <string name="wallpaper_desc">خلفية حية تتغير بحسب الشروق والغروب وحسب GPS بدلاً من الوضع الداكن</string>
 </resources>
