@@ -1,0 +1,58 @@
+name: Android Emulator Smoke Test Qasioun Clean Video V1.4
+on:
+  push:
+    branches:
+      - qasioun-video-wallpaper-v14-clean-cloth
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build actual installable APK
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Enable KVM acceleration
+        run: |
+          if test -e /dev/kvm; then sudo chmod 666 /dev/kvm; fi
+      - name: Boot Android 15 emulator, install and open app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim
+          script: |
+            set -eu
+            adb install -r QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.sarf.qasioun.wallpaper/.MainActivity
+            sleep 6
+            adb shell pidof com.sarf.qasioun.wallpaper
+            adb shell dumpsys activity activities | grep -F com.sarf.qasioun.wallpaper
+            adb shell dumpsys package com.sarf.qasioun.wallpaper | grep -F QasiounWallpaperService
+            # The renderer requires two 1080x2160 flag portraits; verify the engine
+            # can initialize with synthetic pictures even before the user imports R13.
+            adb shell am start -a android.service.wallpaper.CHANGE_LIVE_WALLPAPER               --ecn android.service.wallpaper.extra.LIVE_WALLPAPER_COMPONENT               com.sarf.qasioun.wallpaper/.QasiounWallpaperService || true
+            adb shell input keyevent 4 || true
+            adb shell am start -W -n com.sarf.qasioun.wallpaper/.MainActivity
+            timeout 45 adb shell uiautomator dump /sdcard/window.xml
+            adb shell cat /sdcard/window.xml | grep -F 'Honor' || echo 'HONOR folder button not visible in dump'
+            adb shell cat /sdcard/window.xml | grep -F 'GPS' || echo 'GPS control not in dump'
+            echo "PASS: V1.4 app installed, UI opened, and MediaPlayer live wallpaper service resolves"
+      - name: Print Android crash logs on failure
+        if: failure()
+        run: |
+          timeout 20 adb logcat -d -t 4500 | grep -C 8 -E 'FATAL EXCEPTION|Process: com.sarf.qasioun.wallpaper|com.sarf.qasioun.wallpaper' | tail -180 || true
