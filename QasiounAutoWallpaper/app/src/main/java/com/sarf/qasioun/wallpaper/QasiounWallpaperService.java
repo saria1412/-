@@ -24,7 +24,7 @@ public final class QasiounWallpaperService extends WallpaperService {
     @Override public Engine onCreateEngine(){return new AnimatedEngine();}
 
     private final class AnimatedEngine extends Engine {
-        private static final long FRAME_INTERVAL_MS=90L; // ~11fps, only while visible
+        private static final long FRAME_INTERVAL_MS=33L; // up to 30fps, rendered only when visible
         private static final long SOLAR_CHECK_MS=18_000L;
         private final Handler handler=new Handler(Looper.getMainLooper());
         private final Paint basePaint=new Paint(Paint.FILTER_BITMAP_FLAG|Paint.DITHER_FLAG);
@@ -39,7 +39,6 @@ public final class QasiounWallpaperService extends WallpaperService {
         private FlagOverlay flag;
         private String loadedPath="";
         private long modified=0;
-        private long previousFrame=0;
 
         @Override public void onVisibilityChanged(boolean state){
             visible=state;
@@ -73,12 +72,20 @@ public final class QasiounWallpaperService extends WallpaperService {
             BitmapFactory.Options options=new BitmapFactory.Options();
             options.inPreferredConfig=Bitmap.Config.RGB_565;
             options.inDither=true;
-            backdrop=BitmapFactory.decodeFile(file.getAbsolutePath(),options);
-            if(backdrop==null)return null;
-            if(backdrop.getHeight()>1.65*backdrop.getWidth()) {
-                try {flag=new FlagOverlay(backdrop,isNight);}
-                catch(RuntimeException ignored){flag=null;}
-            }
+            Bitmap original=BitmapFactory.decodeFile(file.getAbsolutePath(),options);
+            if(original==null)return null;
+            if(original.getHeight()>1.65*original.getWidth()) {
+                try {
+                    // Make the cloth a separate alpha layer, and remove the static
+                    // flag from the background so that the two cannot ghost.
+                    flag=new FlagOverlay(original,isNight);
+                    backdrop=SkyRestorer.erase(original,isNight);
+                    original.recycle();
+                } catch(RuntimeException unavailable) {
+                    if(flag!=null) {flag.release();flag=null;}
+                    backdrop=original; // fail safely if a device cannot allocate layers
+                }
+            } else backdrop=original;
             return backdrop;
         }
         private boolean calculateNight(){
@@ -129,7 +136,6 @@ public final class QasiounWallpaperService extends WallpaperService {
             Bitmap b=load(image,night);
             render(b,now);
             first=false;
-            previousFrame=now;
             if(!destroyed&&visible)handler.postDelayed(frame,FRAME_INTERVAL_MS);
         }
         @Override public void onDestroy(){
