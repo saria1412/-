@@ -1,0 +1,88 @@
+name: Build Qasioun Day Night Wallpaper APK
+
+on:
+  push:
+    branches:
+      - 'qasioun-auto-wallpaper-v01'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Validate resources and restricted permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path("QasiounAutoWallpaper")
+          app=root/"app/src/main"
+          manifest=app/"AndroidManifest.xml"
+          m=manifest.read_text(encoding='utf-8')
+          ET.parse(manifest)
+          for bad in ('ACCESS_FINE_LOCATION','INTERNET','QUERY_ALL_PACKAGES',
+                      'SYSTEM_ALERT_WINDOW','BIND_ACCESSIBILITY_SERVICE'):
+              assert bad not in m, f'Unexpected manifest permission: {bad}'
+          for asset in app.rglob("*.xml"): ET.parse(asset)
+          src=(app/"java/com/sarf/qasioun/wallpaper/QasiounWallpaperService.java").read_text()
+          assert "Configuration.UI_MODE_NIGHT_YES" in src
+          assert "onConfigurationChanged" in src
+          assert "WallpaperService" in src
+          importer=(app/"java/com/sarf/qasioun/wallpaper/ThemeStorage.java").read_text()
+          assert '"wallpaper/home_wallpaper_0.jpg"' in importer
+          assert "ZipInputStream" in importer
+          assert "12_000_000" in importer
+          print("PASS: system-driven switching + safe import + XML + least-privilege")
+          PY
+      - name: Test solar fallback calculation separately
+        run: |
+          mkdir -p /tmp/qasioun_solar
+          javac -encoding UTF-8 -d /tmp/qasioun_solar \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/SolarClock.java \
+            QasiounAutoWallpaper/tests/SolarClockTest.java
+          java -cp /tmp/qasioun_solar SolarClockTest
+      - name: Compile APK and run Android Lint
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print Lint errors if build fails
+        if: failure()
+        run: |
+          for f in QasiounAutoWallpaper/app/build/reports/lint-results-debug.txt QasiounAutoWallpaper/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt; do
+            if test -f "$f"; then grep -n -B2 -A3 -E 'Error:|errors, [0-9]+ warnings' "$f" || true; fi
+          done
+      - name: Verify APK signature and manifest
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Qasioun_Day_Night_Auto_Wallpaper_v1.0_BETA.apk
+          cp QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.wallpaper'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='1.0.0-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -F 'QasiounWallpaperService'
+          unzip -Z1 "$apk" | grep -F 'classes.dex'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounAutoWallpaper/README_AR.md release/README_AR.md
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qasioun-Auto-Wallpaper-APK
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
