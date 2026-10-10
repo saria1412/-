@@ -6,8 +6,8 @@ android {
         applicationId 'com.sarf.qasioun.wallpaper'
         minSdk 29
         targetSdk 35
-        versionCode 2
-        versionName '1.1.0-solar-beta'
+        versionCode 3
+        versionName '1.2.0-animated-flag-beta'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

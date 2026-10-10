@@ -30,7 +30,15 @@ public final class ThemeStorage {
         return new File(c.getFilesDir(),night?"qasioun_night.jpg":"qasioun_day.jpg");
     }
     public static boolean ready(Context c){
-        return image(c,false).isFile() && image(c,true).isFile();
+        return isPortrait(image(c,false)) && isPortrait(image(c,true));
+    }
+    private static boolean isPortrait(File file){
+        if (!file.isFile()) return false;
+        BitmapFactory.Options o=new BitmapFactory.Options();
+        o.inJustDecodeBounds=true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(),o);
+        return o.outWidth>=800 && o.outHeight>=1600
+            && o.outHeight>1.65*o.outWidth;
     }
     public static String selected(Context c,boolean night) {
         return pref(c).getString(night?"night_name":"day_name","لم يتم الاختيار");
@@ -96,7 +104,7 @@ public final class ThemeStorage {
     }
 
     /**
-     * Reads only wallpaper/home_wallpaper_0.jpg from the selected HNT.
+     * Reads only wallpaper/unlock_wallpaper_0.jpg (portrait with flag) from the selected HNT.
      * Hard limits mitigate accidental zip bombs and corrupted downloads.
      */
     public static int importHnt(Context c,Uri uri,boolean night,String name)throws IOException {
@@ -112,7 +120,7 @@ public final class ThemeStorage {
                 int entries=0;
                 while((entry=zip.getNextEntry())!=null) {
                     if(++entries>4000)throw new IOException("حزمة تحتوي ملفات كثيرة جدًا");
-                    if(!entry.isDirectory()&&"wallpaper/home_wallpaper_0.jpg".equals(entry.getName())) {
+                    if(!entry.isDirectory()&&"wallpaper/unlock_wallpaper_0.jpg".equals(entry.getName())) {
                         try(FileOutputStream out=new FileOutputStream(temp)) {
                             byte[] buffer=new byte[8192];
                             int n;
@@ -139,7 +147,8 @@ public final class ThemeStorage {
         dimensions.inJustDecodeBounds=true;
         BitmapFactory.decodeFile(temp.getAbsolutePath(),dimensions);
         if(dimensions.outWidth<480||dimensions.outWidth>8000||
-          dimensions.outHeight<900||dimensions.outHeight>8000){
+          dimensions.outHeight<1600||dimensions.outHeight>8000||
+          dimensions.outHeight<=1.65*dimensions.outWidth){
             temp.delete();
             throw new IOException("أبعاد الخلفية غير صحيحة في "+name);
         }

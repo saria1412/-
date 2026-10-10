@@ -118,15 +118,15 @@ public final class MainActivity extends Activity {
         panel.setPadding(dp(19),dp(25),dp(19),dp(30));
         scroll.addView(panel);
         addTitle("قاسيون | الصباح والمساء",24,gold,5);
-        addNote("تتغير الخلفية تلقائيًا عند الشروق والغروب حسب موقع GPS، دون الاعتماد على الوضع الداكن.",9);
+        addNote("حركة العلم تعمل نهارًا وليلًا، ويتبدل المشهد تلقائيًا عند الشروق والغروب حسب موقع GPS، دون الاعتماد على الوضع الداكن.",9);
         addTitle("١. صور الثيم من مجلد HONOR",17,pale,22);
         status=addStatus();
         addButton("اختر المجلد Honor / Themes",true,this::chooseFolder);
-        addButton("إعادة قراءة الثيمين من المجلد",false,this::rescanFolder);
+        addButton("إعادة استيراد الثيمين لتفعيل حركة العلم",false,this::rescanFolder);
         addButton("اختيار النهاري HNT منفردًا",false,()->chooseFile(false));
         addButton("اختيار الليلي HNT منفردًا",false,()->chooseFile(true));
-        addButton("معاينة الخلفية النهارية",false,()->preview(false));
-        addButton("معاينة الخلفية الليلية",false,()->preview(true));
+        addButton("عرض صورة النهار قبل الحركة",false,()->preview(false));
+        addButton("عرض صورة الليل قبل الحركة",false,()->preview(true));
         addTitle("٢. الشروق والغروب حسب الموقع",17,pale,22);
         gpsStatus=addStatus();
         addButton("تحديد الموقع الحالي GPS",true,this::requestLocation);
@@ -135,8 +135,9 @@ public final class MainActivity extends Activity {
             refreshState();
         });
         addTitle("٣. تفعيل الخلفية التلقائية",17,pale,22);
-        apply=addButton("تفعيل الخلفية الحية",true,this::activateWallpaper);
-        addNote("بعد تفعيل الخلفية، أعد تشغيل شاشة الهاتف أو بدّل الخلفية من داخل التطبيق لاختبار الوضع. التبديل يتم اعتمادًا على الساعة والموقع؛ ولا يشمل تغيير أيقونات HNT أو واجهات النظام.",13);
+        apply=addButton("تفعيل الخلفية المتحركة للعلم",true,this::activateWallpaper);
+        addNote("الآن تتحرك راية سورية في المشهدين. بعد التحديث أعد استيراد HNT مرة واحدة ليستخدم صورة القفل الطولية بدل صورة المنزل المربعة.",13);
+        addNote("تنبيه: لا يستطيع هذا التطبيق تغيير أيقونات HNT تلقائيًا. لاستخدام الأيقونات العاجية نهارًا، اختر أيقونات ثيم R13 النهاري من تطبيق HONOR Themes يدويًا، دون تغيير الخلفية الحية.",13);
         addNote("لتغيير مكان ساعة القفل: افتح تخصيص شاشة القفل في HONOR، واضغط مطولًا على الساعة واسحبها أسفل العلم، إذا كان نمط القفل يدعم ذلك.",13);
         setContentView(scroll);
         refreshState();
@@ -144,9 +145,9 @@ public final class MainActivity extends Activity {
     private void refreshState() {
         if(status!=null) {
             status.setText("النهار: "+ThemeStorage.selected(this,false)+"\n"+
-                 (ThemeStorage.image(this,false).isFile()?"✓ الخلفية النهارية جاهزة":"اختر الخلفية النهارية")+"\n"+
+                 (ThemeStorage.ready(this)?"✓ الخلفية النهارية جاهزة للحركة":"يجب إعادة استيراد ملف HNT")+"\n"+
                  "الليل: "+ThemeStorage.selected(this,true)+"\n"+
-                 (ThemeStorage.image(this,true).isFile()?"✓ الخلفية الليلية جاهزة":"اختر الخلفية الليلية"));
+                 (ThemeStorage.ready(this)?"✓ الخلفية الليلية جاهزة للحركة":"يجب إعادة استيراد ملف HNT"));
         }
         if(gpsStatus!=null) {
             if(!GeoPreferences.has(this)) {
