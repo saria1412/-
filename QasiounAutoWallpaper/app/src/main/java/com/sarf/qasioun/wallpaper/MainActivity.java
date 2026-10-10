@@ -118,11 +118,11 @@ public final class MainActivity extends Activity {
         panel.setPadding(dp(19),dp(25),dp(19),dp(30));
         scroll.addView(panel);
         addTitle("قاسيون | الصباح والمساء",24,gold,5);
-        addNote("حركة العلم تعمل نهارًا وليلًا، ويتبدل المشهد تلقائيًا عند الشروق والغروب حسب موقع GPS، دون الاعتماد على الوضع الداكن.",9);
+        addNote("تُشغّل نسخة R16 فيديو العلم بسلاسة عند الشروق والغروب حسب موقع GPS. لا يعتمد التبديل على Light/Dark.",9);
         addTitle("١. صور الثيم من مجلد HONOR",17,pale,22);
         status=addStatus();
         addButton("اختر المجلد Honor / Themes",true,this::chooseFolder);
-        addButton("إعادة استيراد الثيمين لتفعيل حركة العلم",false,this::rescanFolder);
+        addButton("إعادة استيراد R16 نهارًا وليلًا (بالفيديو)",false,this::rescanFolder);
         addButton("اختيار النهاري HNT منفردًا",false,()->chooseFile(false));
         addButton("اختيار الليلي HNT منفردًا",false,()->chooseFile(true));
         addButton("عرض صورة النهار قبل الحركة",false,()->preview(false));
@@ -136,7 +136,7 @@ public final class MainActivity extends Activity {
         });
         addTitle("٣. تفعيل الخلفية التلقائية",17,pale,22);
         apply=addButton("تفعيل الخلفية المتحركة للعلم",true,this::activateWallpaper);
-        addNote("الآن تتحرك راية سورية في المشهدين. بعد التحديث أعد استيراد HNT مرة واحدة ليستخدم صورة القفل الطولية بدل صورة المنزل المربعة.",13);
+        addNote("للحركة الطبيعية دون تقطيع: اختر ملفَي R16 الموجودين في Honor/Themes أو حددهما منفردين. يتحقق التطبيق من فيديو القفل داخل كل HNT.",13);
         addNote("تنبيه: لا يستطيع هذا التطبيق تغيير أيقونات HNT تلقائيًا. لاستخدام الأيقونات العاجية نهارًا، اختر أيقونات ثيم R13 النهاري من تطبيق HONOR Themes يدويًا، دون تغيير الخلفية الحية.",13);
         addNote("لتغيير مكان ساعة القفل: افتح تخصيص شاشة القفل في HONOR، واضغط مطولًا على الساعة واسحبها أسفل العلم، إذا كان نمط القفل يدعم ذلك.",13);
         setContentView(scroll);
@@ -145,9 +145,13 @@ public final class MainActivity extends Activity {
     private void refreshState() {
         if(status!=null) {
             status.setText("النهار: "+ThemeStorage.selected(this,false)+"\n"+
-                 (ThemeStorage.ready(this)?"✓ الخلفية النهارية جاهزة للحركة":"يجب إعادة استيراد ملف HNT")+"\n"+
+                 (ThemeStorage.image(this,false).isFile()?
+                        (ThemeStorage.hasMotion(this,false)?"✓ فيديو النهار جاهز":"صورة نهارية فقط؛ اختر R16 للحركة الطبيعية"):
+                        "يجب استيراد ملف HNT")+"\n"+
                  "الليل: "+ThemeStorage.selected(this,true)+"\n"+
-                 (ThemeStorage.ready(this)?"✓ الخلفية الليلية جاهزة للحركة":"يجب إعادة استيراد ملف HNT"));
+                 (ThemeStorage.image(this,true).isFile()?
+                        (ThemeStorage.hasMotion(this,true)?"✓ فيديو الليل جاهز":"صورة ليلية فقط؛ اختر R16 للحركة الطبيعية"):
+                        "يجب استيراد ملف HNT"));
         }
         if(gpsStatus!=null) {
             if(!GeoPreferences.has(this)) {
