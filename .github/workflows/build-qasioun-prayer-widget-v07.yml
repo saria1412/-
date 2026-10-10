@@ -37,7 +37,7 @@ jobs:
           python3 ci/render_qasioun_v06_fix.py QasiounPrayer
           python3 QasiounPrayer/tests/test_widget_layout.py
           grep -q 'versionCode 6' QasiounPrayer/app/build.gradle
-          grep -q "versionName '0.7.0-next-event-beta'" QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.6.0-sunrise-beta'" QasiounPrayer/app/build.gradle
           test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png
           test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png
       - name: Make sunrise the next timed event (both widgets)
