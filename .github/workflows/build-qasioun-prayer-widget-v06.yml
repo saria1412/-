@@ -1,0 +1,106 @@
+name: Build Mawaqit Al-Salah v0.6 Sunrise Widgets
+on:
+  push:
+    branches:
+      - 'qasioun-prayer-widget-v06-sunrise'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Restore v0.5 verified widget application
+        run: |
+          set -euo pipefail
+          echo '05fd0a6c0c4b3a4b276da11d0b64cf7def6fb14e8860ea5b14250b280b417507  QasiounPrayer_Source.zip' | sha256sum -c -
+          mkdir -p QasiounPrayer
+          unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
+          base64 -d ci/qasioun-widget-v05.patch.b64 | tar -xz -C QasiounPrayer
+          python3 QasiounPrayer/tests/test_widget_layout.py
+      - name: Apply sunrise to compact and expanded widgets
+        run: |
+          python3 -m pip install --disable-pip-version-check pillow
+          python3 ci/patch_qasioun_widget_v06.py QasiounPrayer
+          python3 QasiounPrayer/tests/test_widget_layout.py
+          grep -q 'versionCode 6' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.6.0-sunrise-beta'" QasiounPrayer/app/build.gradle
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png
+      - name: Download verified CC0 adhan
+        run: |
+          set -euo pipefail
+          mkdir -p QasiounPrayer/app/src/main/res/raw
+          curl --fail --location --retry 3 --retry-delay 2 --user-agent 'QasiounPrayerCI/1.0' \
+            'https://upload.wikimedia.org/wikipedia/commons/b/b0/Beautiful_adhan.ogg' \
+            -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
+          echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
+      - name: Android 11-16 compatible stream decoding
+        run: |
+          p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
+          sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
+      - name: Test calculations, sunrise, and widgets
+        working-directory: QasiounPrayer
+        run: |
+          bash tests/run.sh
+          python3 tests/test_widget_layout.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          base = Path('app/src/main/res/layout')
+          provider = Path('app/src/main/java/com/sarf/qasioun/prayer/WidgetProvider.java').read_text()
+          assert provider.count('R.id.widget_sunrise') == 2
+          assert '"☀ الشروق " + PrayerEngine.format(snapshot.sunrise(), snapshot.tz())' in provider
+          assert 'rv.setTextViewText(R.id.widget_sunrise, "☀ الشروق --:--")' in provider
+          for name in ('prayer_widget.xml', 'prayer_widget_compact.xml'):
+              root=ET.parse(base/name).getroot()
+              assert sum(1 for n in root.iter() if n.attrib.get('{http://schemas.android.com/apk/res/android}id')=='@+id/widget_sunrise')==1
+          assert 'versionCode 6' in Path('app/build.gradle').read_text()
+          print('PASS: live sunrise, placeholder, both widget layouts')
+          PY
+      - name: Build and lint Android APK
+        working-directory: QasiounPrayer
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Show lint failures
+        if: failure()
+        run: |
+          f=QasiounPrayer/app/build/reports/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B2 -A3 'Error:' "$f" || true; fi
+      - name: Validate signed APK and v0.6 features
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Mawaqit_Al_Salah_Sunrise_Umayyad_v0.6.0_BETA.apk
+          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.prayer'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='0.6.0-sunrise-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$apk" | grep -F 'widget_sunrise'
+          unzip -Z1 "$apk" | grep -q 'widget_preview_compact'
+          unzip -Z1 "$apk" | grep -q 'widget_preview_expanded'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png release/Widget_Compact_v06.png
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png release/Widget_Expanded_v06.png
+          printf '%s\n' 'Android 0.6 BETA: sunrise shown in both widgets; Umm Al-Qura prayer times remain unchanged.' \
+             'Test on HONOR Magic7 Pro. This debug APK might require uninstalling v0.5 due to different signing certificate.' \
+             > release/README_INSTALL.txt
+      - name: Upload APK with widget previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mawaqit-v06-Sunrise-APK
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
