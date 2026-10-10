@@ -114,8 +114,11 @@ public final class QasiounWallpaperService extends WallpaperService {
                         try {
                             mp.setVideoScalingMode(
                                 MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING);
-                            mp.start();
-                        } catch(RuntimeException error){videoFailed(path);}
+                        } catch(RuntimeException unsupportedScaling) {
+                            // Some HONOR surfaces ignore crop modes; video can still play normally.
+                        }
+                        try {mp.start();}
+                        catch(RuntimeException error){videoFailed(path);}
                     }
                 });
                 p.setOnErrorListener((mp,what,extra)->{
