@@ -1,148 +1,160 @@
 package com.sarf.qasioun.wallpaper;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
+import android.media.MediaPlayer;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.service.wallpaper.WallpaperService;
+import android.view.Surface;
 import android.view.SurfaceHolder;
-
 import java.io.File;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 /**
- * Draws a real moving flag from the two lock portraits inside the user's R13 HNTs.
- * Sunrise/sunset is calculated from the GPS coordinates, NEVER device Light/Dark.
- * Rendering pauses when Android hides this wallpaper to conserve battery.
+ * V1.4 uses complete, pre-rendered R16 H.264 lock movies (no jagged
+ * alpha polygons, no double silhouettes, no reconstructed sky artifacts).
+ *
+ * Sunrise/sunset switching is based on GPS coordinates, not system Dark mode.
+ * Videos are hardware-decoded only while the live wallpaper is visible.
  */
 public final class QasiounWallpaperService extends WallpaperService {
-    @Override public Engine onCreateEngine(){return new AnimatedEngine();}
+    @Override public Engine onCreateEngine() { return new VideoEngine(); }
 
-    private final class AnimatedEngine extends Engine {
-        private static final long FRAME_INTERVAL_MS=33L; // up to 30fps, rendered only when visible
-        private static final long SOLAR_CHECK_MS=18_000L;
+    private final class VideoEngine extends Engine {
         private final Handler handler=new Handler(Looper.getMainLooper());
-        private final Paint basePaint=new Paint(Paint.FILTER_BITMAP_FLAG|Paint.DITHER_FLAG);
-        private final Runnable frame=new Runnable(){
-            @Override public void run(){frame(false);}
+        private final Runnable tick=new Runnable() {
+            @Override public void run() { checkPhase(); }
         };
-        private boolean visible, destroyed;
-        private boolean night;
-        private boolean first=true;
-        private long nextSolarCheck=0;
-        private Bitmap backdrop;
-        private FlagOverlay flag;
-        private String loadedPath="";
-        private long modified=0;
+        private static final long CHECK_MS=15_000L;
+        private boolean visible;
+        private boolean destroyed;
+        private boolean surfaceReady;
+        private boolean prepared;
+        private MediaPlayer player;
+        private String playingPath="";
+        private long playingModified=0;
 
-        @Override public void onVisibilityChanged(boolean state){
+        @Override public void onVisibilityChanged(boolean state) {
             visible=state;
-            handler.removeCallbacks(frame);
-            if(state)frame(true);
+            handler.removeCallbacks(tick);
+            if(state)checkPhase();
+            else pausePlayback();
         }
-        @Override public void onSurfaceCreated(SurfaceHolder holder){
-            super.onSurfaceCreated(holder);
-            if(visible)frame(true);
+        @Override public void onSurfaceCreated(SurfaceHolder h) {
+            super.onSurfaceCreated(h);
+            surfaceReady=true;
+            checkPhase();
         }
-        @Override public void onSurfaceChanged(SurfaceHolder holder,int format,int width,int height){
-            super.onSurfaceChanged(holder,format,width,height);
-            if(visible)frame(true);
+        @Override public void onSurfaceChanged(SurfaceHolder h,int format,int width,int height) {
+            super.onSurfaceChanged(h,format,width,height);
+            surfaceReady=true;
+            // Rebinding a new Surface is safe after a rotation or launcher rebuild.
+            if(player!=null)try{player.setSurface(h.getSurface());}catch(RuntimeException ignored){}
+            checkPhase();
         }
-        @Override public void onSurfaceRedrawNeeded(SurfaceHolder holder){
-            if(visible)frame(true);
+        @Override public void onSurfaceDestroyed(SurfaceHolder h) {
+            surfaceReady=false;
+            releasePlayer();
+            super.onSurfaceDestroyed(h);
         }
-        private void releaseImages(){
-            if(flag!=null){flag.release();flag=null;}
-            if(backdrop!=null&&!backdrop.isRecycled())backdrop.recycle();
-            backdrop=null;
-        }
-        private Bitmap load(File file,boolean isNight){
-            if(!file.isFile())return null;
-            if(backdrop!=null&&!backdrop.isRecycled() &&
-                file.getAbsolutePath().equals(loadedPath) &&
-                file.lastModified()==modified)return backdrop;
-            releaseImages();
-            loadedPath=file.getAbsolutePath();
-            modified=file.lastModified();
-            BitmapFactory.Options options=new BitmapFactory.Options();
-            options.inPreferredConfig=Bitmap.Config.RGB_565;
-            options.inDither=true;
-            Bitmap original=BitmapFactory.decodeFile(file.getAbsolutePath(),options);
-            if(original==null)return null;
-            if(original.getHeight()>1.65*original.getWidth()) {
-                try {
-                    // Make the cloth a separate alpha layer, and remove the static
-                    // flag from the background so that the two cannot ghost.
-                    flag=new FlagOverlay(original,isNight);
-                    backdrop=SkyRestorer.erase(original,isNight);
-                    original.recycle();
-                } catch(RuntimeException unavailable) {
-                    if(flag!=null) {flag.release();flag=null;}
-                    backdrop=original; // fail safely if a device cannot allocate layers
-                }
-            } else backdrop=original;
-            return backdrop;
-        }
-        private boolean calculateNight(){
+        private boolean night() {
             if(!GeoPreferences.has(QasiounWallpaperService.this))return false;
             ZonedDateTime now=ZonedDateTime.now(ZoneId.systemDefault());
             return SolarClock.isNight(now,
                 GeoPreferences.latitude(QasiounWallpaperService.this),
                 GeoPreferences.longitude(QasiounWallpaperService.this));
         }
-        private void render(Bitmap img,long uptime){
+        private void pausePlayback() {
+            if(player!=null && prepared) {
+                try{if(player.isPlaying())player.pause();}catch(RuntimeException ignored){}
+            }
+        }
+        private void releasePlayer() {
+            MediaPlayer old=player;
+            player=null;
+            prepared=false;
+            playingPath="";
+            playingModified=0;
+            if(old!=null) {
+                try{old.setOnPreparedListener(null);old.setOnErrorListener(null);
+                    old.stop();}catch(Exception ignored){}
+                try{old.release();}catch(Exception ignored){}
+            }
+        }
+        private void safeBackground() {
             Canvas canvas=null;
-            try {
+            try{
                 canvas=getSurfaceHolder().lockCanvas();
-                if(canvas==null)return;
-                canvas.drawColor(Color.rgb(7,39,31));
-                if(img==null || img.isRecycled())return;
-                float w=canvas.getWidth(),h=canvas.getHeight();
-                float imgW=img.getWidth(),imgH=img.getHeight();
-                float scale=Math.max(w/imgW,h/imgH);
-                canvas.save();
-                canvas.translate((w-imgW*scale)/2f,(h-imgH*scale)/2f);
-                canvas.scale(scale,scale);
-                canvas.drawBitmap(img,0f,0f,basePaint);
-                if(flag!=null)flag.draw(canvas,uptime);
-                canvas.restore();
-            }catch(RuntimeException ignored){
-                // Surface can disappear while the screen sleeps or the launcher changes.
-            }finally{
-                if(canvas!=null){
-                    try{getSurfaceHolder().unlockCanvasAndPost(canvas);}
-                    catch(RuntimeException ignored){}
-                }
+                if(canvas!=null)canvas.drawColor(Color.rgb(5,42,34));
+            }catch(RuntimeException ignored){}
+            finally{
+                if(canvas!=null)try{getSurfaceHolder().unlockCanvasAndPost(canvas);}catch(RuntimeException ignored){}
             }
         }
-        private void frame(boolean force){
-            handler.removeCallbacks(frame);
-            if(destroyed||!visible)return;
-            long now=SystemClock.uptimeMillis();
-            if(force||first||now>=nextSolarCheck){
-                try {
-                    night=calculateNight();
-                }catch(RuntimeException ignored){
-                    // Keep the last known phase if timezone service briefly fails.
-                }
-                nextSolarCheck=now+SOLAR_CHECK_MS;
+        private void playVideo(File target) {
+            if(!target.isFile()||target.length()<150_000L) {
+                releasePlayer();
+                safeBackground();
+                return;
             }
-            File image=ThemeStorage.image(QasiounWallpaperService.this,night);
-            Bitmap b=load(image,night);
-            render(b,now);
-            first=false;
-            if(!destroyed&&visible)handler.postDelayed(frame,FRAME_INTERVAL_MS);
+            releasePlayer();
+            playingPath=target.getAbsolutePath();
+            playingModified=target.lastModified();
+            safeBackground();
+            try{
+                MediaPlayer next=new MediaPlayer();
+                player=next;
+                prepared=false;
+                next.setDataSource(playingPath);
+                Surface surface=getSurfaceHolder().getSurface();
+                if(surface==null||!surface.isValid()) {
+                    releasePlayer();
+                    return;
+                }
+                next.setSurface(surface);
+                next.setVolume(0f,0f);
+                next.setLooping(true);
+                next.setOnPreparedListener(mp->{
+                    if(mp!=player||destroyed)return;
+                    prepared=true;
+                    try{
+                        mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING);
+                        if(visible&&surfaceReady)mp.start();
+                    }catch(RuntimeException ignored){}
+                });
+                next.setOnErrorListener((mp,what,extra)->{
+                    handler.post(()->{
+                        if(player==mp){releasePlayer();safeBackground();}
+                    });
+                    return true;
+                });
+                next.prepareAsync();
+            }catch(Exception unavailable){
+                releasePlayer();
+                safeBackground();
+            }
         }
-        @Override public void onDestroy(){
+        private void checkPhase() {
+            handler.removeCallbacks(tick);
+            if(destroyed||!visible||!surfaceReady)return;
+            boolean isNight=false;
+            try{isNight=night();}catch(RuntimeException ignored){}
+            File target=ThemeStorage.video(QasiounWallpaperService.this,isNight);
+            if(!target.getAbsolutePath().equals(playingPath)
+               ||target.lastModified()!=playingModified||player==null){
+                playVideo(target);
+            } else if(prepared) {
+                try{if(!player.isPlaying())player.start();}catch(RuntimeException ignored){}
+            }
+            if(!destroyed&&visible)handler.postDelayed(tick,CHECK_MS);
+        }
+        @Override public void onDestroy() {
             destroyed=true;
             visible=false;
-            handler.removeCallbacks(frame);
-            releaseImages();
+            handler.removeCallbacks(tick);
+            releasePlayer();
             super.onDestroy();
         }
     }
