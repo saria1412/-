@@ -33,7 +33,18 @@ def clock(day,path):
     ar(d,W//2,242,"السبت ١٠ أكتوبر ٢٠٢٦",21,primary,False,"mt")
     ar(d,W//2,290,"٢٩ ربيع الثاني ١٤٤٨هـ",20,accent,False,"mt")
     d.line((55,340,W-55,340),fill=accent,width=2)
-    ar(d,W//2,355,"☀" if day else "☾",46,accent,False,"mt")
+    # Vector weather emblem avoids missing symbol glyphs in the HONOR picker.
+    cx,cy=W//2,403
+    import math
+    if day:
+        d.ellipse((cx-24,cy-24,cx+24,cy+24),fill=accent)
+        for a in range(0,360,45):
+            angle=math.radians(a)
+            d.line((cx+34*math.cos(angle),cy+34*math.sin(angle),
+                    cx+48*math.cos(angle),cy+48*math.sin(angle)),fill=accent,width=4)
+    else:
+        d.ellipse((cx-33,cy-33,cx+33,cy+33),fill=accent)
+        d.ellipse((cx-16,cy-45,cx+46,cy+17),fill=(0,0,0,0))
     en(d,W//2,450,"31°" if day else "24°",67,primary,"mm")
     ar(d,W//2,524,"صحو" if day else "سماء صافية",24,primary,False,"mt")
     ar(d,W//2,575,"طقس حسب الموقع",17,muted,False,"mt")
@@ -116,8 +127,12 @@ for image,label,pos in thumbs:
         image=image.resize((580,round(image.height*580/image.width)))
     elif image.width>390:
         image=image.resize((360,round(image.height*360/image.width)))
-    mask=image if image.mode=="RGBA" else None
-    gallery.paste(image,(ox,oy+45),mask)
+    if image.mode=="RGBA":
+        panel=Image.new("RGB",image.size,"#A6CBDD" if "DAY" in label else "#102A3D")
+        panel.paste(image,(0,0),image)
+        gallery.paste(panel,(ox,oy+45))
+    else:
+        gallery.paste(image,(ox,oy+45))
     d.text((ox,oy+8),label,fill="#12372D",font=nums(22))
 gallery.save(out/"day_night_widget_qa_v09.png",optimize=True)
 print("PASS: transparent RGBA clock with zero-alpha corners; daylight/night widget preview assets generated")
