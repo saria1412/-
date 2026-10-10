@@ -25,6 +25,7 @@ jobs:
           mkdir -p QasiounPrayer
           unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
           base64 -d ci/qasioun-widget-v05.patch.b64 | tar -xz -C QasiounPrayer
+          python3 -m pip install --disable-pip-version-check pillow
           python3 ci/patch_qasioun_widget_v06.py QasiounPrayer
           python3 ci/patch_qasioun_widget_v07.py QasiounPrayer
           python3 ci/patch_qasioun_clock_weather_v08.py QasiounPrayer
