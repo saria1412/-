@@ -1,0 +1,105 @@
+name: Build Qasioun Sun-Scheduled Wallpaper V1.1
+on:
+  push:
+    branches:
+      - qasioun-auto-wallpaper-v02-solar-folder
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify GPS/sunrise sunset implementation and SAF directory picker
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path('QasiounAutoWallpaper/app/src/main')
+          android='{http://schemas.android.com/apk/res/android}'
+          manifest=root/'AndroidManifest.xml'
+          tree=ET.parse(manifest)
+          text=manifest.read_text()
+          for resource in root.rglob('*.xml'): ET.parse(resource)
+          for permission in ('ACCESS_FINE_LOCATION','ACCESS_COARSE_LOCATION'):
+              assert permission in text
+          for forbidden in ('MANAGE_EXTERNAL_STORAGE','QUERY_ALL_PACKAGES','android.permission.INTERNET','BIND_ACCESSIBILITY_SERVICE'):
+              assert forbidden not in text
+          main=(root/'java/com/sarf/qasioun/wallpaper/MainActivity.java').read_text()
+          storage=(root/'java/com/sarf/qasioun/wallpaper/ThemeStorage.java').read_text()
+          engine=(root/'java/com/sarf/qasioun/wallpaper/QasiounWallpaperService.java').read_text()
+          for token in ('ACTION_OPEN_DOCUMENT_TREE','takePersistableUriPermission','getCurrentLocation','REQUEST_LOCATION'):
+              assert token in main,token
+          for token in ('getTreeDocumentId','buildChildDocumentsUriUsingTree','syria_qasioun_','wallpaper/home_wallpaper_0.jpg'):
+              assert token in storage,token
+          assert 'SolarClock.isNight' in engine
+          assert 'UI_MODE_NIGHT' not in engine and 'onVisibilityChanged' in engine
+          assert 'versionCode 2' in Path('QasiounAutoWallpaper/app/build.gradle').read_text()
+          print('PASS: Android XML, sandboxed folder selection, GPS, offline solar switching, permission minimization')
+          PY
+      - name: Solar calculation tests around Jeddah sunrise and sunset
+        run: |
+          mkdir -p /tmp/qasioun-solar-test
+          javac -encoding UTF-8 -d /tmp/qasioun-solar-test \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/SolarClock.java \
+            QasiounAutoWallpaper/tests/SolarClockTest.java
+          java -cp /tmp/qasioun-solar-test SolarClockTest
+          cat > /tmp/ReferenceTest.java <<'JAVA'
+          import com.sarf.qasioun.wallpaper.SolarClock;
+          import java.time.*;
+          class ReferenceTest {
+            public static void main(String[] args) {
+              SolarClock.Events e=SolarClock.forDate(LocalDate.of(2026,10,10),21.5433,39.1728,
+                                                   ZoneId.of("Asia/Riyadh"));
+              int rise=e.sunrise.getHour()*60+e.sunrise.getMinute();
+              int set=e.sunset.getHour()*60+e.sunset.getMinute();
+              if(Math.abs(rise-(6*60+17))>4)throw new AssertionError("Unexpected Jeddah sunrise: "+e.sunrise);
+              if(Math.abs(set-(18*60+4))>4)throw new AssertionError("Unexpected Jeddah sunset: "+e.sunset);
+              System.out.println("PASS: Jeddah reference 06:17 sunrise / 18:04 sunset ±4 minutes");
+            }
+          }
+          JAVA
+          javac -encoding UTF-8 -cp /tmp/qasioun-solar-test -d /tmp/qasioun-solar-test /tmp/ReferenceTest.java
+          java -cp /tmp/qasioun-solar-test ReferenceTest
+      - name: Compile and lint Android APK
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print Android lint errors if failed
+        if: failure()
+        run: |
+          f=QasiounAutoWallpaper/app/build/reports/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B2 -A3 'Error:' "$f" || true; fi
+          grep -R 'error:' QasiounAutoWallpaper/app/build/intermediates/javac 2>/dev/null | head -30 || true
+      - name: Verify signed installable application
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Qasioun_Solar_Auto_Wallpaper_v1.1.0_BETA.apk
+          cp QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.wallpaper'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='1.1.0-solar-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -F 'QasiounWallpaperService'
+          unzip -Z1 "$apk" | grep -F 'classes.dex'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounAutoWallpaper/README_AR.md release/README_AR.md
+      - name: Export signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qasioun-Solar-Scheduled-Wallpaper-V11
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
