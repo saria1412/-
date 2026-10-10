@@ -1,0 +1,85 @@
+name: Build Qasioun R16 Full Video Wallpaper V1.4
+on:
+  push:
+    branches:
+      - qasioun-video-wallpaper-v14-clean-cloth
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify native video playback and safe SAF HNT import
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path('QasiounAutoWallpaper/app')
+          for p in root.rglob('*.xml'): ET.parse(p)
+          src=root/'src/main/java/com/sarf/qasioun/wallpaper'
+          store=(src/'ThemeStorage.java').read_text()
+          engine=(src/'QasiounWallpaperService.java').read_text()
+          gradle=(root/'build.gradle').read_text()
+          assert '"unlock/lockscreen/unlock.mp4"' in store
+          assert '"wallpaper/unlock_wallpaper_0.jpg"' in store
+          assert 'MediaMetadataRetriever' in store and 'validateVideo(tmpVideo)' in store
+          assert 'if(n.contains("_r16_"))return 16' in store
+          assert 'importFolder(Context c,Uri folderUri)' in store
+          assert 'MediaPlayer' in engine
+          assert 'VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING' in engine
+          assert 'setLooping(true)' in engine
+          assert 'setSurface(surface)' in engine
+          assert 'SolarClock.isNight' in engine
+          assert 'FlagOverlay' not in engine and 'drawBitmapMesh' not in engine
+          assert 'versionCode 5' in gradle
+          assert "versionName '1.4.0-no-cut-video-beta'" in gradle
+          manifest=(root/'src/main/AndroidManifest.xml').read_text()
+          assert 'MANAGE_EXTERNAL_STORAGE' not in manifest
+          assert 'android.permission.INTERNET' not in manifest
+          print('PASS: full R16 video, no clipped mesh, 15s solar checks, SAF, Android XML')
+          PY
+      - name: Test solar day/night calculations
+        run: |
+          mkdir -p /tmp/qasioun-solar
+          javac -encoding UTF-8 -d /tmp/qasioun-solar \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/SolarClock.java \
+            QasiounAutoWallpaper/tests/SolarClockTest.java
+          java -cp /tmp/qasioun-solar SolarClockTest
+      - name: Build signed installable APK and run Android Lint
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print lint diagnostic on failure
+        if: failure()
+        run: |
+          f=QasiounAutoWallpaper/app/build/reports/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B2 -A4 'Error:' "$f" || true; fi
+      - name: Inspect Android package and signature
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Qasioun_Solar_CleanFlag_v1.4.0_BETA.apk
+          cp QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.wallpaper'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='1.4.0-no-cut-video-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -F 'QasiounWallpaperService'
+          unzip -Z1 "$apk" | grep -q 'classes.dex'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounAutoWallpaper/README_AR.md release/README_AR.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qasioun-Solar-CleanFlag-v14-APK
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
