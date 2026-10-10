@@ -69,5 +69,5 @@ for i,(picture,label,background) in enumerate((
     panel.paste(picture,(0,0),picture)
     gallery.paste(panel,(x,y))
     d.text((x,y-40),label,font=latin(sans,23),fill="#153A30")
-gallery.save(out/"clock_v10_transparent_day_night_QA.png",optimize=True)
+gallery.save(out/"clock_v10_transparent_day_night_qa.png",optimize=True)
 print("PASS v0.10 visual QA: temperature above icon, no weather footer, transparent RGBA bounds")
