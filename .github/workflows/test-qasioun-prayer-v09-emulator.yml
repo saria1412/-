@@ -30,6 +30,7 @@ jobs:
           python3 ci/patch_qasioun_widget_v07.py QasiounPrayer
           python3 ci/patch_qasioun_clock_weather_v08.py QasiounPrayer
           python3 ci/patch_qasioun_v09_solar_palette.py QasiounPrayer
+          python3 ci/render_qasioun_v09_previews.py QasiounPrayer
       - name: Download verified CC0 Adhan
         run: |
           mkdir -p QasiounPrayer/app/src/main/res/raw
