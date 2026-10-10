@@ -34,7 +34,7 @@ def clock(day,path):
     ar(d,W//2,290,"٢٩ ربيع الثاني ١٤٤٨هـ",20,accent,False,"mt")
     d.line((55,340,W-55,340),fill=accent,width=2)
     # Vector weather emblem avoids missing symbol glyphs in the HONOR picker.
-    cx,cy=W//2,403
+    cx,cy=W//2,385
     import math
     if day:
         d.ellipse((cx-24,cy-24,cx+24,cy+24),fill=accent)
@@ -45,9 +45,9 @@ def clock(day,path):
     else:
         d.ellipse((cx-33,cy-33,cx+33,cy+33),fill=accent)
         d.ellipse((cx-16,cy-45,cx+46,cy+17),fill=(0,0,0,0))
-    en(d,W//2,450,"31°" if day else "24°",67,primary,"mm")
-    ar(d,W//2,524,"صحو" if day else "سماء صافية",24,primary,False,"mt")
-    ar(d,W//2,575,"طقس حسب الموقع",17,muted,False,"mt")
+    en(d,W//2,495,"31°" if day else "24°",67,primary,"mm")
+    ar(d,W//2,549,"صحو" if day else "سماء صافية",24,primary,False,"mt")
+    ar(d,W//2,590,"طقس حسب الموقع",17,muted,False,"mt")
     im.save(path,optimize=True)
     # All outermost pixels must remain alpha zero.
     assert im.getpixel((0,0))[3]==0 and im.getpixel((W-1,H-1))[3]==0
@@ -109,7 +109,7 @@ for name,image in [("prayer_widget_compact.xml","widget_preview_compact_day"),
     p.write_text(x.replace(old,new),encoding="utf-8")
 
 # Visual QA contact sheet comparing styles, not a screenshot.
-gallery=Image.new("RGB",(1280,1060),"#E5E3D8")
+gallery=Image.new("RGB",(1280,1080),"#E5E3D8")
 d=ImageDraw.Draw(gallery)
 d.text((35,15),"QA — actual v09 palette assets (not a device screenshot)",fill="#092D26",font=nums(29))
 for left,image,title in [(35,day,"DAY / ivory"),(35,night,"NIGHT / green")]:
@@ -126,7 +126,7 @@ for image,label,pos in thumbs:
     if image.width>580:
         image=image.resize((580,round(image.height*580/image.width)))
     elif image.width>390:
-        image=image.resize((360,round(image.height*360/image.width)))
+        image=image.resize((290,round(image.height*290/image.width)))
     if image.mode=="RGBA":
         panel=Image.new("RGB",image.size,"#A6CBDD" if "DAY" in label else "#102A3D")
         panel.paste(image,(0,0),image)
