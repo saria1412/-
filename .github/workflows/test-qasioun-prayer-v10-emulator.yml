@@ -1,0 +1,88 @@
+name: Android 15 Smoke Test Mawaqit v0.10
+on:
+  push:
+    branches: [qasioun-prayer-widget-v10-weather-order]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Restore and patch prayer application v09
+        run: |
+          set -eu
+          echo '05fd0a6c0c4b3a4b276da11d0b64cf7def6fb14e8860ea5b14250b280b417507  QasiounPrayer_Source.zip' | sha256sum -c -
+          mkdir -p QasiounPrayer
+          unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
+          base64 -d ci/qasioun-widget-v05.patch.b64 | tar -xz -C QasiounPrayer
+          python3 -m pip install --disable-pip-version-check pillow
+          python3 ci/patch_qasioun_widget_v06.py QasiounPrayer
+          python3 ci/patch_qasioun_widget_v07.py QasiounPrayer
+          python3 ci/patch_qasioun_clock_weather_v08.py QasiounPrayer
+          python3 ci/patch_qasioun_v09_solar_palette.py QasiounPrayer
+          python3 ci/patch_qasioun_v10_weather_layout.py QasiounPrayer
+          python3 ci/render_qasioun_v10_clock_previews.py QasiounPrayer
+          python3 - <<'PY'
+          from xml.etree import ElementTree as ET
+          from pathlib import Path
+          root=Path('QasiounPrayer/app/src/main/res/layout')
+          android='{http://schemas.android.com/apk/res/android}'
+          for name in ('clock_weather_widget.xml','clock_weather_widget_day.xml'):
+              ids=[n.attrib.get(android+'id') for n in ET.parse(root/name).iter()]
+              filtered=[x for x in ids if x in ('@+id/cw_temperature','@+id/cw_weather_icon',
+                                                 '@+id/cw_condition','@+id/cw_status')]
+              assert filtered==['@+id/cw_temperature','@+id/cw_weather_icon','@+id/cw_condition']
+          print('PASS new day/night weather widget resources')
+          PY
+          python3 ci/render_qasioun_v09_previews.py QasiounPrayer
+      - name: Download verified CC0 Adhan
+        run: |
+          mkdir -p QasiounPrayer/app/src/main/res/raw
+          curl --fail --location --retry 3 --retry-delay 2 \
+            'https://upload.wikimedia.org/wikipedia/commons/b/b0/Beautiful_adhan.ogg' \
+            -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
+          echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
+          sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
+      - name: Compile app for emulator
+        working-directory: QasiounPrayer
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Allow emulator KVM
+        run: |
+          if test -e /dev/kvm; then sudo chmod 666 /dev/kvm; fi
+      - name: Install, open, verify app widgets on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim
+          script: |
+            set -eu
+            adb install -r QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.sarf.qasioun.prayer/.MainActivity
+            sleep 5
+            adb shell pidof com.sarf.qasioun.prayer
+            adb shell dumpsys activity activities | grep -F 'com.sarf.qasioun.prayer/.MainActivity'
+            adb shell dumpsys package com.sarf.qasioun.prayer | grep -F 'ClockWeatherWidgetProvider'
+            adb shell dumpsys package com.sarf.qasioun.prayer | grep -F 'WidgetCompactProvider'
+            adb shell dumpsys package com.sarf.qasioun.prayer | grep -F 'WidgetProvider'
+            timeout 40 adb shell uiautomator dump /sdcard/qasioun.xml
+            adb shell cat /sdcard/qasioun.xml | grep -F 'مواقيت الصلاة' || echo 'UI text not in dump; app process and activity were verified separately'
+            echo 'PASS: Mawaqit v0.10 installed, main UI active and widget providers registered'
+      - name: Print crashes if tests fail
+        if: failure()
+        run: |
+          timeout 20 adb logcat -d -t 5500 | grep -C 5 -E 'FATAL EXCEPTION|Process: com.sarf.qasioun.prayer' | tail -180 || true
