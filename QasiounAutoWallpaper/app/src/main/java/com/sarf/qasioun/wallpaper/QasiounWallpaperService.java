@@ -72,20 +72,17 @@ public final class QasiounWallpaperService extends WallpaperService {
             BitmapFactory.Options options=new BitmapFactory.Options();
             options.inPreferredConfig=Bitmap.Config.RGB_565;
             options.inDither=true;
-            Bitmap original=BitmapFactory.decodeFile(file.getAbsolutePath(),options);
-            if(original==null)return null;
-            if(original.getHeight()>1.65*original.getWidth()) {
+            backdrop=BitmapFactory.decodeFile(file.getAbsolutePath(),options);
+            if(backdrop==null)return null;
+            if(backdrop.getHeight()>1.65*backdrop.getWidth()) {
                 try {
-                    // Make the cloth a separate alpha layer, and remove the static
-                    // flag from the background so that the two cannot ghost.
-                    flag=new FlagOverlay(original,isNight);
-                    backdrop=SkyRestorer.erase(original,isNight);
-                    original.recycle();
+                    // Keep the intact original silhouette; only shaded fabric folds travel.
+                    // No sky inpainting, no mesh clipping, no detached cloth fragments.
+                    flag=new FlagOverlay(backdrop,isNight);
                 } catch(RuntimeException unavailable) {
-                    if(flag!=null) {flag.release();flag=null;}
-                    backdrop=original; // fail safely if a device cannot allocate layers
+                    flag=null; // user sees a pristine still flag rather than broken geometry
                 }
-            } else backdrop=original;
+            }
             return backdrop;
         }
         private boolean calculateNight(){
