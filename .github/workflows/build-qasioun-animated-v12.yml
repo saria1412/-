@@ -1,0 +1,82 @@
+name: Build Qasioun Animated Day Night v1.2
+on:
+  push:
+    branches: [qasioun-auto-wallpaper-v12-animated-flag]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Verify R13 animated import logic and permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path("QasiounAutoWallpaper/app/src/main")
+          for xml in root.rglob("*.xml"):
+              ET.parse(xml)
+          store=(root/"java/com/sarf/qasioun/wallpaper/ThemeStorage.java").read_text()
+          service=(root/"java/com/sarf/qasioun/wallpaper/QasiounWallpaperService.java").read_text()
+          flag=(root/"java/com/sarf/qasioun/wallpaper/FlagOverlay.java").read_text()
+          version=Path("QasiounAutoWallpaper/app/build.gradle").read_text()
+          assert '"wallpaper/unlock_wallpaper_0.jpg"' in store
+          assert 'o.outHeight>1.65*o.outWidth' in store
+          assert 'new FlagOverlay(backdrop,isNight)' in service
+          assert 'flag.draw(canvas,uptime)' in service
+          assert 'FRAME_INTERVAL_MS=90L' in service
+          assert 'SolarClock.isNight' in service
+          assert 'drawBitmapMesh' in flag
+          assert 'versionCode 3' in version
+          manifest=(root/"AndroidManifest.xml").read_text()
+          assert 'MANAGE_EXTERNAL_STORAGE' not in manifest
+          print("PASS: R13 portrait import, 90ms animated flag, solar transition, permissions, XML")
+          PY
+      - name: Offline solar and moving-flag math tests
+        run: |
+          mkdir -p /tmp/qasioun-test
+          javac -encoding UTF-8 -d /tmp/qasioun-test \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/SolarClock.java \
+            QasiounAutoWallpaper/tests/SolarClockTest.java \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/FlagMotion.java \
+            QasiounAutoWallpaper/tests/FlagMotionTest.java
+          java -cp /tmp/qasioun-test SolarClockTest
+          java -cp /tmp/qasioun-test FlagMotionTest
+      - name: Compile Android v1.2 and run lint
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print compiler or lint errors
+        if: failure()
+        run: |
+          f=QasiounAutoWallpaper/app/build/reports/lint-results-debug.txt
+          test ! -f "$f" || grep -n -B2 -A5 'Error:' "$f" || true
+      - name: Validate version signed APK + HNT animation engine
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Qasioun_Solar_Animated_Flag_v1.2.0_BETA.apk
+          cp QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.wallpaper'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='1.2.0-animated-flag-beta'"
+          unzip -Z1 "$apk" | grep -q 'classes.dex'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounAutoWallpaper/README_AR.md release/README_AR.md
+      - name: Deliver APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qasioun-Solar-Animated-Flag-v12
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
