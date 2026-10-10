@@ -326,4 +326,56 @@ for name in ("clock_weather_widget_day.xml","clock_weather_widget.xml"):
 assert "clockCount" in text and "PrayerVisualTheme.nextBoundary" in text
 assert "setBackgroundResource" not in text
 assert "PrayerVisualTheme.isDay" in s or "PrayerVisualTheme.isDay" in activity.read_text()
+
+# Keep the Qibla activity on the same theme as the main prayer screen.
+qibla=java/"QiblaActivity.java"
+q=qibla.read_text(encoding="utf-8")
+q=once(q,'''    private final int dark = 0xFF08352C, panel = 0xFF11483C, gold = 0xFFE6C98E;
+    private final int ivory = 0xFFF6F3E9, muted = 0xFFB8D0C4, red = 0xFFCF4D4F;''',
+'''    private int dark = 0xFF08352C, panel = 0xFF11483C, gold = 0xFFE6C98E;
+    private int ivory = 0xFFF6F3E9, muted = 0xFFB8D0C4;
+    private final int red = 0xFFCF4D4F;
+    private boolean compassDayPalette;''',"Qibla palette mutable")
+q=once(q,
+'''        buildUi();
+        loadStoredPosition();
+    }
+
+    private int dp(float value)''',
+'''        applyCompassPalette(PrayerVisualTheme.isDay(this,PrayerEngine.snapshot(this)));
+        buildUi();
+        loadStoredPosition();
+    }
+
+    private void applyCompassPalette(boolean day) {
+        compassDayPalette=day;
+        dark=day?0xFFF6F0E4:0xFF08352C;
+        panel=day?0xFFF9F4EA:0xFF11483C;
+        gold=day?0xFF916324:0xFFE6C98E;
+        ivory=day?0xFF0A352D:0xFFF6F3E9;
+        muted=day?0xFF48645A:0xFFB8D0C4;
+        getWindow().setStatusBarColor(dark);
+        getWindow().setNavigationBarColor(dark);
+        getWindow().getDecorView().setSystemUiVisibility(
+            day ? View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR |
+                  View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0);
+    }
+
+    private int dp(float value)''',"Qibla apply palette")
+q=once(q,
+'''    @Override protected void onResume() {
+        super.onResume();
+        hasReadingReset();''',
+'''    @Override protected void onResume() {
+        super.onResume();
+        boolean day=PrayerVisualTheme.isDay(this,PrayerEngine.snapshot(this));
+        if(day!=compassDayPalette) {
+            applyCompassPalette(day);
+            buildUi();
+            loadStoredPosition();
+        }
+        hasReadingReset();''',"Qibla automatic resume")
+qibla.write_text(q,encoding="utf-8")
+assert "compassDayPalette" in q
+
 print("PASS: V09 transparent clock, 2 pairs of widget palettes, app day/night UI, scheduled transitions")
