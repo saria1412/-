@@ -47,7 +47,7 @@ jobs:
           assert 'drawBitmapMesh' not in flag
           assert 'canvas.clipPath(silhouette)' in flag
           assert 'setLocalMatrix' in flag
-          assert 'FRAME_INTERVAL_MS=33L' in engine
+          assert 'FALLBACK_FRAME_MS=33L' in engine
           assert 'hasMotion(this,false)' in ui and 'hasMotion(this,true)' in ui
           build=(app/'build.gradle').read_text()
           assert "versionCode 6" in build
