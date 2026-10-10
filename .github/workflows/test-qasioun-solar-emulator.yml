@@ -1,8 +1,8 @@
-name: Android Emulator Smoke Test Qasioun Solar V1.1
+name: Android Emulator Smoke Test Qasioun Animated Flag V1.2
 on:
   push:
     branches:
-      - qasioun-auto-wallpaper-v02-solar-folder
+      - qasioun-auto-wallpaper-v12-animated-flag
   workflow_dispatch:
 permissions:
   contents: read
@@ -46,7 +46,7 @@ jobs:
             timeout 45 adb shell uiautomator dump /sdcard/window.xml
             adb shell cat /sdcard/window.xml | grep -F 'Honor' || echo 'HONOR folder button not visible in dump'
             adb shell cat /sdcard/window.xml | grep -F 'GPS' || echo 'GPS control not in dump'
-            echo "PASS: App installed and opened; folder-picker and GPS controls visible on Android 15"
+            echo "PASS: V1.2 installed and opened; moving-flag setup controls present on Android 15"
       - name: Print Android crash logs on failure
         if: failure()
         run: |
