@@ -1,0 +1,93 @@
+name: Build Qasioun R16 Natural Video Wallpaper v1.4.1
+
+on:
+  push:
+    branches:
+      - qasioun-auto-wallpaper-v14-safe-folds
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Validate import, decoder and flag-safe fallback implementation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          app=Path('QasiounAutoWallpaper/app')
+          root=app/'src/main/java/com/sarf/qasioun/wallpaper'
+          for xml in app.rglob('*.xml'):ET.parse(xml)
+          store=(root/'ThemeStorage.java').read_text()
+          engine=(root/'QasiounWallpaperService.java').read_text()
+          flag=(root/'FlagOverlay.java').read_text()
+          ui=(root/'MainActivity.java').read_text()
+          assert '"unlock/lockscreen/unlock.mp4"' in store
+          assert 'MediaMetadataRetriever' in store
+          assert 'copyEntry(zip,videoTemp,20_000_000)' in store
+          assert 'rank(name,false)' in store
+          assert 'if(n.contains("_r16_"))return 16' in store
+          assert 'MediaPlayer' in engine
+          assert 'MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING' in engine
+          assert 'ThemeStorage.video(' in engine
+          assert 'SolarClock.isNight' in engine
+          assert 'SkyRestorer.erase' not in engine
+          assert 'drawBitmapMesh' not in flag
+          assert 'canvas.clipPath(silhouette)' in flag
+          assert 'setLocalMatrix' in flag
+          assert 'FRAME_INTERVAL_MS=33L' in engine
+          assert 'hasMotion(this,false)' in ui and 'hasMotion(this,true)' in ui
+          build=(app/'build.gradle').read_text()
+          assert "versionCode 6" in build
+          assert "versionName '1.4.1-r16-video-beta'" in build
+          print("PASS: video HNT import, user-visible readiness, MP4 playback, fallback safety, GPS, Android XML")
+          PY
+      - name: Verify sunrise and sunset calculations
+        run: |
+          mkdir -p /tmp/qasioun-v14-test
+          javac -encoding UTF-8 -d /tmp/qasioun-v14-test \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/SolarClock.java \
+            QasiounAutoWallpaper/tests/SolarClockTest.java \
+            QasiounAutoWallpaper/app/src/main/java/com/sarf/qasioun/wallpaper/FlagMotion.java \
+            QasiounAutoWallpaper/tests/FlagMotionTest.java
+          java -cp /tmp/qasioun-v14-test SolarClockTest
+          java -cp /tmp/qasioun-v14-test FlagMotionTest
+      - name: Assemble and Android lint
+        working-directory: QasiounAutoWallpaper
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Print build diagnostics
+        if: failure()
+        run: |
+          f=QasiounAutoWallpaper/app/build/reports/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B2 -A4 'Error:' "$f" || true; fi
+      - name: Validate signed installable APK
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Qasioun_R16_Solar_Natural_Flag_v1.4.1_BETA.apk
+          cp QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.wallpaper'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='1.4.1-r16-video-beta'"
+          unzip -Z1 "$apk" | grep -q 'classes.dex'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounAutoWallpaper/README_AR.md release/README_AR.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qasioun-R16-Natural-Flag-V141
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
