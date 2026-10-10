@@ -227,7 +227,7 @@ jobs:
           cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded_day.png release/Prayer_Expanded_Day_v09.png
           cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded_night.png release/Prayer_Expanded_Night_v09.png
           cp QasiounPrayer/app/src/main/res/drawable-nodpi/day_night_widget_qa_v09.png release/Widget_Palette_QA_v09.png
-          cp QasiounPrayer/app/src/main/res/drawable-nodpi/clock_v10_transparent_day_night_QA.png release/Clock_V10_Transparent_Comparison.png
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/clock_v10_transparent_day_night_qa.png release/Clock_V10_Transparent_Comparison.png
           printf '%s\n' 'Android 0.10 BETA: Transparent 2x3 clock places live weather icon below temperature and deletes status/footer; solar prayer colors remain.' \
              'Place the new widget in the top-right sky by hand. Remove native HONOR clock-weather widget manually. Signature may require uninstalling previous app; backup preferences first.' \
              > release/README_INSTALL.txt
