@@ -73,7 +73,7 @@ write(res/"layout/clock_weather_widget.xml",r'''
         android:textColor="@color/ivory"
         android:includeFontPadding="false"
         android:singleLine="true"/>
-    <View android:layout_width="match_parent" android:layout_height="1dp"
+    <TextView android:layout_width="match_parent" android:layout_height="1dp"
         android:layout_marginTop="4dp"
         android:layout_marginBottom="6dp"
         android:background="#78C7B787"/>
@@ -98,7 +98,7 @@ write(res/"layout/clock_weather_widget.xml",r'''
         android:fontFamily="@font/noto_kufi_arabic_regular"
         android:maxLines="2" android:ellipsize="end"
         android:includeFontPadding="false"/>
-    <View android:layout_width="match_parent" android:layout_height="1dp"
+    <TextView android:layout_width="match_parent" android:layout_height="1dp"
         android:layout_marginTop="7dp"
         android:layout_marginBottom="5dp"
         android:background="#78C7B787"/>
