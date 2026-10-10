@@ -1,0 +1,161 @@
+name: Build Mawaqit Al-Salah v0.8 Tall Clock and Live Weather
+on:
+  push:
+    branches:
+      - 'qasioun-prayer-widget-v08-clock-weather'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Restore v0.5 verified widget application
+        run: |
+          set -euo pipefail
+          echo '05fd0a6c0c4b3a4b276da11d0b64cf7def6fb14e8860ea5b14250b280b417507  QasiounPrayer_Source.zip' | sha256sum -c -
+          mkdir -p QasiounPrayer
+          unzip -q QasiounPrayer_Source.zip -d QasiounPrayer
+          base64 -d ci/qasioun-widget-v05.patch.b64 | tar -xz -C QasiounPrayer
+          python3 QasiounPrayer/tests/test_widget_layout.py
+      - name: Apply sunrise to compact and expanded widgets
+        run: |
+          python3 -m pip install --disable-pip-version-check pillow
+          python3 ci/patch_qasioun_widget_v06.py QasiounPrayer
+          python3 ci/render_qasioun_v06_fix.py QasiounPrayer
+          python3 QasiounPrayer/tests/test_widget_layout.py
+          grep -q 'versionCode 6' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.6.0-sunrise-beta'" QasiounPrayer/app/build.gradle
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png
+      - name: Make sunrise the next timed event (both widgets)
+        run: |
+          python3 ci/patch_qasioun_widget_v07.py QasiounPrayer
+          python3 ci/render_qasioun_v07_previews.py QasiounPrayer
+          python3 QasiounPrayer/tests/test_widget_layout.py
+          grep -q 'versionCode 7' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.7.0-next-event-beta'" QasiounPrayer/app/build.gradle
+      - name: Implement tall 2x3 clock weather widget with live city & WMO conditions
+        run: |
+          python3 ci/patch_qasioun_clock_weather_v08.py QasiounPrayer
+          python3 ci/render_qasioun_clock_weather_v08.py QasiounPrayer
+          test -s QasiounPrayer/app/src/main/res/drawable-nodpi/clock_weather_preview.png
+          grep -q 'versionCode 8' QasiounPrayer/app/build.gradle
+          grep -q "versionName '0.8.0-portrait-weather-beta'" QasiounPrayer/app/build.gradle
+          mkdir -p /tmp/qasioun-weather-java-test
+          javac -encoding UTF-8 -d /tmp/qasioun-weather-java-test \
+            QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/WeatherCodes.java \
+            ci/WeatherCodesTest.java
+          java -cp /tmp/qasioun-weather-java-test WeatherCodesTest
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          base=Path("QasiounPrayer/app/src/main")
+          android="{http://schemas.android.com/apk/res/android}"
+          info=ET.parse(base/"res/xml/clock_weather_widget.xml").getroot()
+          assert info.attrib[android+"targetCellWidth"]=="2"
+          assert info.attrib[android+"targetCellHeight"]=="3"
+          layout=ET.parse(base/"res/layout/clock_weather_widget.xml").getroot()
+          assert any(el.tag=="TextClock" for el in layout.iter())
+          ids=[el.attrib.get(android+"id") for el in layout.iter()]
+          for id in ("cw_clock","cw_city","cw_gregorian","cw_hijri","cw_temperature","cw_condition","cw_weather_icon"):
+              assert "@+id/"+id in ids,id
+          manifest=(base/"AndroidManifest.xml").read_text()
+          assert "ClockWeatherWidgetProvider" in manifest
+          assert "WeatherRefreshJobService" in manifest
+          java=(base/"java/com/sarf/qasioun/prayer")
+          assert "ClockWeatherWidgetProvider.renderAll(context)" in (java/"WidgetProvider.java").read_text()
+          assert "WeatherRefreshJobService.start(c)" in (java/"RefreshJobService.java").read_text()
+          weather=(java/"WeatherApi.java").read_text()
+          assert "api.open-meteo.com/v1/forecast" in weather
+          assert "current=temperature_2m,weather_code,is_day" in weather
+          print("PASS: clock-weather 2x3, live clock, dates, cached location/weather, provider registration")
+          PY
+      - name: Download verified CC0 adhan
+        run: |
+          set -euo pipefail
+          mkdir -p QasiounPrayer/app/src/main/res/raw
+          curl --fail --location --retry 3 --retry-delay 2 --user-agent 'QasiounPrayerCI/1.0' \
+            'https://upload.wikimedia.org/wikipedia/commons/b/b0/Beautiful_adhan.ogg' \
+            -o QasiounPrayer/app/src/main/res/raw/adhan.ogg
+          echo 'a1fa4fd942401922c5c3301816384aae86956522  QasiounPrayer/app/src/main/res/raw/adhan.ogg' | sha1sum -c -
+      - name: Android 11-16 compatible stream decoding
+        run: |
+          p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
+          sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
+      - name: Test chronology and widget layouts
+        working-directory: QasiounPrayer
+        run: |
+          bash tests/run.sh
+          python3 tests/test_widget_layout.py
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          base=Path('app/src/main/res/layout')
+          widget=Path('app/src/main/java/com/sarf/qasioun/prayer/WidgetProvider.java').read_text()
+          assert 'shown.name()' in widget and 'shouldShowSunrise' in widget
+          assert 'ACTION_TRANSITION' in widget
+          assert 'scheduleTimelineChange' in widget
+          assert 'shown.index() == -1 ? "المتبقي للشروق" : "المتبقي للأذان"' in widget
+          assert 'R.id.widget_sunrise' not in widget
+          assert ' القادم' not in widget
+          for name in ('prayer_widget.xml','prayer_widget_compact.xml'):
+              tree=ET.parse(base/name)
+              ids=[n.attrib.get('{http://schemas.android.com/apk/res/android}id') for n in tree.iter()]
+              assert '@+id/widget_sunrise' not in ids, name
+              assert ids.count('@+id/widget_countdown_label') == 1, name
+          names=Path('app/src/main/java/com/sarf/qasioun/prayer/PrayerStore.java').read_text()
+          assert 'Sunrise' not in names.split('public static final String[] KEYS')[1].split(';')[0]
+          print('PASS: event timeline, no permanent sunrise, short prayer title, no sunrise adhan')
+          PY
+      - name: Build and lint Android APK
+        working-directory: QasiounPrayer
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Show lint failures
+        if: failure()
+        run: |
+          f=QasiounPrayer/app/build/reports/lint-results-debug.txt
+          if test -f "$f"; then grep -n -B2 -A3 'Error:' "$f" || true; fi
+      - name: Validate signed APK and v0.8 portrait weather widget
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/Mawaqit_Al_Salah_ClockWeather_v0.8.0_BETA.apk
+          cp QasiounPrayer/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.qasioun.prayer'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='0.8.0-portrait-weather-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$apk" | grep -F 'widget_countdown_label'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$apk" | grep -F 'clock_weather_widget'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$apk" | grep -F 'cw_clock'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" res/xml/clock_weather_widget.xml | grep -F 'targetCellHeight'
+          unzip -Z1 "$apk" | grep -q 'clock_weather_preview'
+          unzip -Z1 "$apk" | grep -q 'widget_preview_compact'
+          unzip -Z1 "$apk" | grep -q 'widget_preview_expanded'
+          sha256sum "$apk" > "$apk.sha256"
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_compact.png release/Widget_Compact_v07.png
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/widget_preview_expanded.png release/Widget_Expanded_v07.png
+          cp QasiounPrayer/app/src/main/res/drawable-nodpi/clock_weather_preview.png release/Clock_Weather_Portrait_2x3.png
+          printf '%s\n' 'Android 0.8 BETA adds a vertical 2x3 live clock, Gregorian/Hijri calendar, city and WMO weather via Open-Meteo. All prayer widgets remain unchanged.' \
+             'Place the new widget in the top-right sky by hand. Remove native HONOR clock-weather widget manually. Signature may require uninstalling previous app; backup preferences first.' \
+             > release/README_INSTALL.txt
+      - name: Upload APK with widget previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mawaqit-v08-Portrait-Clock-Weather-APK
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
