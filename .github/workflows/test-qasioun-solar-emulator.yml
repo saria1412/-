@@ -36,7 +36,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r QasiounAutoWallpaper/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.sarf.qasioun.wallpaper/.MainActivity
             sleep 6
