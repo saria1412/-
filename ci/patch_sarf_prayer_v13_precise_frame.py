@@ -48,7 +48,7 @@ XML=r'''<?xml version="1.0" encoding="utf-8"?>
   android:background="__DIVIDER__"/>
 
  <!-- Transparent protected space for ORIGINAL brand symbol. -->
- <View android:layout_width="match_parent"
+ <TextView android:layout_width="match_parent"
   android:layout_height="0dp"
   android:layout_weight="1"
   android:background="@android:color/transparent"/>
@@ -95,7 +95,7 @@ XML=r'''<?xml version="1.0" encoding="utf-8"?>
     android:includeFontPadding="false"/>
   </LinearLayout>
 
-  <View
+  <TextView
    android:layout_width="12dp"
    android:layout_height="1dp"
    android:background="@android:color/transparent"/>
@@ -163,7 +163,8 @@ for fname,is_day in (("clock_weather_widget.xml",False),("clock_weather_widget_d
     assert parsed.attrib[android+"paddingStart"]== "52dp"
     assert parsed.attrib[android+"paddingBottom"]=="63dp"
     assert len([n for n in parsed.iter() if n.tag=="TextClock"])==1
-    assert len([n for n in parsed.iter() if n.attrib.get(android+"layout_weight")=="1" and n.tag=="View"])==1
+    assert len([n for n in parsed.iter() if n.attrib.get(android+"layout_weight")=="1" and n.tag=="TextView"])==1
+    assert not any(n.tag=="View" for n in parsed.iter()), "RemoteViews only supports whitelisted layouts"
     assert not any(n.attrib.get(android+"layout_height")=="77dp" for n in parsed.iter())
     print("PASS responsive inset widget",fname)
 
