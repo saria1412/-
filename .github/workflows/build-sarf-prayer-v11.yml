@@ -166,25 +166,6 @@ jobs:
         run: |
           p=QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer/PrayerApi.java
           sed -i 's/out.toString(StandardCharsets.UTF_8)/new String(out.toByteArray(), StandardCharsets.UTF_8)/g' "$p"
-      - name: Apply approved SARF Industrial Premium B design
-        run: |
-          set -euo pipefail
-          python3 ci/patch_sarf_prayer_v11.py QasiounPrayer
-          grep -Fq "versionCode 11" QasiounPrayer/app/build.gradle
-          grep -Fq "com.sarf.engineering.prayer" QasiounPrayer/app/build.gradle
-          python3 - <<'PY'
-          from pathlib import Path
-          from xml.etree import ElementTree as ET
-          root=Path('QasiounPrayer/app/src/main/res')
-          for path in root.rglob('*.xml'): ET.parse(path)
-          app=Path('QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer')
-          assert "PrayerVisualTheme.isDay" in (app/'ClockWeatherWidgetProvider.java').read_text()
-          for name in ['clock_weather_widget','clock_weather_widget_day']:
-              t=(root/'layout'/f'{name}.xml').read_text()
-              assert '@android:color/transparent' in t
-              assert 'cw_temperature' in t and 'cw_weather_icon' in t
-          print('PASS: SARF app resources and transparent weather widget')
-          PY
       - name: Test chronology and widget layouts
         working-directory: QasiounPrayer
         run: |
@@ -209,6 +190,25 @@ jobs:
           names=Path('app/src/main/java/com/sarf/qasioun/prayer/PrayerStore.java').read_text()
           assert 'Sunrise' not in names.split('public static final String[] KEYS')[1].split(';')[0]
           print('PASS: event timeline, no permanent sunrise, short prayer title, no sunrise adhan')
+          PY
+      - name: Apply approved SARF Industrial Premium B design
+        run: |
+          set -euo pipefail
+          python3 ci/patch_sarf_prayer_v11.py QasiounPrayer
+          grep -Fq "versionCode 11" QasiounPrayer/app/build.gradle
+          grep -Fq "com.sarf.engineering.prayer" QasiounPrayer/app/build.gradle
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path('QasiounPrayer/app/src/main/res')
+          for path in root.rglob('*.xml'): ET.parse(path)
+          app=Path('QasiounPrayer/app/src/main/java/com/sarf/qasioun/prayer')
+          assert "PrayerVisualTheme.isDay" in (app/'ClockWeatherWidgetProvider.java').read_text()
+          for name in ['clock_weather_widget','clock_weather_widget_day']:
+              t=(root/'layout'/f'{name}.xml').read_text()
+              assert '@android:color/transparent' in t
+              assert 'cw_temperature' in t and 'cw_weather_icon' in t
+          print('PASS: SARF app resources and transparent weather widget')
           PY
       - name: Build and lint Android APK
         working-directory: QasiounPrayer
