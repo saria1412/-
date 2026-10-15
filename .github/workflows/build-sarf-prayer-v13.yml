@@ -238,7 +238,7 @@ jobs:
           assert 'R.layout.clock_weather_widget_day' in provider
           gradle=Path('QasiounPrayer/app/build.gradle').read_text()
           assert 'versionCode 12' in gradle
-          assert "versionName '1.3.0-frame-insets-beta'" in gradle
+          assert "versionName '1.2.0-plaque-clock-beta'" in gradle
           print('PASS: SARF 4x4 plaque widget and live clock/weather bindings')
           PY
       - name: Fit real widget to SARF copper frame in HONOR screenshot
