@@ -1,0 +1,87 @@
+name: Build SARF Theme Auto Switch R01
+on:
+  push:
+    branches:
+      - sarf-theme-auto-v01
+    paths-ignore:
+      - 'artifacts/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Validate project and explicit accessibility scope
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          root=Path('SARFThemeAuto/app/src/main')
+          for f in root.rglob('*.xml'):
+              ET.parse(f)
+          manifest=(root/'AndroidManifest.xml').read_text()
+          config=(root/'res/xml/accessibility_service_config.xml').read_text()
+          main=(root/'java/com/sarf/engineering/themeswitch/MainActivity.java').read_text()
+          service=(root/'java/com/sarf/engineering/themeswitch/ThemeAccessibilityService.java').read_text()
+          scheduling=(root/'java/com/sarf/engineering/themeswitch/ThemeScheduler.java').read_text()
+          assert 'android.permission.BIND_ACCESSIBILITY_SERVICE' in manifest
+          assert 'android.permission.INTERNET' not in manifest
+          assert 'com.hihonor.android.thememanager' in config
+          assert 'android:canRetrieveWindowContent="true"' in config
+          assert 'SARF Material Flow Day R09' in scheduling
+          assert 'SARF Material Flow Night R09' in scheduling
+          assert 'setAndAllowWhileIdle' in scheduling
+          assert 'startPendingIfPossible' in service
+          assert 'تم إيقاف الجدول' in scheduling
+          assert 'setEnabled(this' in main
+          print('PASS: explicit opt-in, no internet, two named themes, scheduling, local UI only')
+          PY
+      - name: Compile Android APK and lint
+        working-directory: SARFThemeAuto
+        run: gradle --no-daemon :app:assembleDebug :app:lintDebug --stacktrace
+      - name: Show error diagnostics
+        if: failure()
+        run: |
+          f=SARFThemeAuto/app/build/reports/lint-results-debug.txt
+          if test -s "$f"; then grep -n -B2 -A4 'Error:' "$f" || true; fi
+      - name: Verify signed APK and manifest
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk=release/SARF_Theme_Auto_Switch_R01_BETA.apk
+          cp SARFThemeAuto/app/build/outputs/apk/debug/app-debug.apk "$apk"
+          unzip -t "$apk" | tail -n 1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.sarf.engineering.themeswitch'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionName='0.1.0-honor-theme-auto-beta'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$apk" AndroidManifest.xml | grep -F 'BIND_ACCESSIBILITY_SERVICE'
+          sha256sum "$apk" > "$apk.sha256"
+          cp SARFThemeAuto/README_AR.md release/README_AR.md
+      - name: Preserve signed beta APK on branch
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp release/SARF_Theme_Auto_Switch_R01_BETA.apk artifacts/
+          cp release/SARF_Theme_Auto_Switch_R01_BETA.apk.sha256 artifacts/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/
+          git commit -m "SARF Theme Auto R01 signed beta APK [skip ci]"
+          git push origin HEAD:refs/heads/sarf-theme-auto-v01
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SARF-Theme-Auto-Switch-R01-APK
+          path: release/*
+          retention-days: 21
+          if-no-files-found: error
