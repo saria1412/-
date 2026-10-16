@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">SARF | تبديل الثيم</string>
+  <string name="accessibility_name">SARF — تطبيق السمات تلقائيًا</string>
+  <string name="accessibility_description">خدمة اختيار ثيم SARF النهاري أو الليلي في تطبيق سمات HONOR فقط، بحسب جدول يحدده المستخدم. تقتصر على أزرار السمات ولا تجمع البيانات أو ترسلها.</string>
+</resources>
